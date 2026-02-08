@@ -315,6 +315,23 @@ import { createWorldData } from "./worlds/index.js";
     } catch {}
   }
 
+  const SILENT_GAIN = 0.0001;
+
+  function holdParamAtTime(param, when) {
+    if (typeof param.cancelAndHoldAtTime === "function") {
+      param.cancelAndHoldAtTime(when);
+      return;
+    }
+    param.cancelScheduledValues(when);
+    param.setValueAtTime(param.value, when);
+  }
+
+  function rampGainTo(gainParam, target, seconds = 0.04) {
+    const now = audioCtx.currentTime;
+    holdParamAtTime(gainParam, now);
+    gainParam.linearRampToValueAtTime(target, now + Math.max(0.005, seconds));
+  }
+
   function playTone({
     type = "square",
     freq = 440,
@@ -337,9 +354,9 @@ import { createWorldData } from "./worlds/index.js";
       );
     }
 
-    amp.gain.setValueAtTime(0.0001, now);
-    amp.gain.exponentialRampToValueAtTime(Math.max(0.0001, gain), now + 0.01);
-    amp.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    amp.gain.setValueAtTime(SILENT_GAIN, now);
+    amp.gain.exponentialRampToValueAtTime(Math.max(SILENT_GAIN, gain), now + 0.01);
+    amp.gain.exponentialRampToValueAtTime(SILENT_GAIN, now + duration);
 
     osc.connect(amp);
     amp.connect(audioBus.sfx);
@@ -364,12 +381,12 @@ import { createWorldData } from "./worlds/index.js";
       if (n.f2 != null)
         osc.frequency.exponentialRampToValueAtTime(Math.max(1, n.f2), t1);
 
-      amp.gain.setValueAtTime(0.0001, t0);
+      amp.gain.setValueAtTime(SILENT_GAIN, t0);
       amp.gain.exponentialRampToValueAtTime(
-        Math.max(0.0001, n.g ?? 0.04),
+        Math.max(SILENT_GAIN, n.g ?? 0.04),
         t0 + 0.01,
       );
-      amp.gain.exponentialRampToValueAtTime(0.0001, t1);
+      amp.gain.exponentialRampToValueAtTime(SILENT_GAIN, t1);
 
       osc.connect(amp);
       amp.connect(audioBus.sfx);
@@ -956,6 +973,7 @@ import { createWorldData } from "./worlds/index.js";
 
     const lookaheadMs = 25;
     const scheduleAhead = 0.35;
+    const scheduleSafety = 0.012;
 
     function getTrack(trackName) {
       if (!trackName) return null;
@@ -974,34 +992,42 @@ import { createWorldData } from "./worlds/index.js";
       return buf;
     })();
 
+    function sanitizeStart(time, dur) {
+      const start = Math.max(time, ctx.currentTime + 0.002);
+      const duration = Math.max(0.015, dur);
+      return { start, end: start + duration };
+    }
+
     function scheduleOsc({ type, midi, time, dur, gain, freqEnd = null }) {
       if (!settings.audio) return;
       if (midi == null) return;
 
+      const { start, end } = sanitizeStart(time, dur);
+      const attack = Math.min(0.01, Math.max(0.004, (end - start) * 0.3));
       const osc = ctx.createOscillator();
       const amp = ctx.createGain();
 
       osc.type = type;
       const f0 = midiToFreq(midi);
-      osc.frequency.setValueAtTime(f0, time);
+      osc.frequency.setValueAtTime(f0, start);
       if (freqEnd != null) {
         osc.frequency.exponentialRampToValueAtTime(
           Math.max(1, freqEnd),
-          time + dur,
+          end,
         );
       }
 
-      amp.gain.setValueAtTime(0.0001, time);
+      amp.gain.setValueAtTime(SILENT_GAIN, start);
       amp.gain.exponentialRampToValueAtTime(
-        Math.max(0.0001, gain),
-        time + 0.01,
+        Math.max(SILENT_GAIN, gain),
+        start + attack,
       );
-      amp.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+      amp.gain.exponentialRampToValueAtTime(SILENT_GAIN, end);
 
       osc.connect(amp);
       amp.connect(out);
-      osc.start(time);
-      osc.stop(time + dur + 0.02);
+      osc.start(start);
+      osc.stop(end + 0.03);
     }
 
     function scheduleNoise({
@@ -1012,45 +1038,48 @@ import { createWorldData } from "./worlds/index.js";
       freq = 6500,
       q = 0.9,
     }) {
+      const { start, end } = sanitizeStart(time, dur);
+      const attack = Math.min(0.008, Math.max(0.003, (end - start) * 0.3));
       const src = ctx.createBufferSource();
       src.buffer = noiseBuffer;
       src.loop = true;
 
       const filter = ctx.createBiquadFilter();
       filter.type = type;
-      filter.frequency.setValueAtTime(freq, time);
-      filter.Q.setValueAtTime(q, time);
+      filter.frequency.setValueAtTime(freq, start);
+      filter.Q.setValueAtTime(q, start);
 
       const amp = ctx.createGain();
-      amp.gain.setValueAtTime(0.0001, time);
+      amp.gain.setValueAtTime(SILENT_GAIN, start);
       amp.gain.exponentialRampToValueAtTime(
-        Math.max(0.0001, gain),
-        time + 0.006,
+        Math.max(SILENT_GAIN, gain),
+        start + attack,
       );
-      amp.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+      amp.gain.exponentialRampToValueAtTime(SILENT_GAIN, end);
 
       src.connect(filter);
       filter.connect(amp);
       amp.connect(out);
 
-      src.start(time);
-      src.stop(time + dur + 0.02);
+      src.start(start);
+      src.stop(end + 0.03);
     }
 
     function scheduleKick(time, gain = 0.026) {
       // Tiny 8-bit “kick” thump.
+      const { start, end } = sanitizeStart(time, 0.075);
       const osc = ctx.createOscillator();
       const amp = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.setValueAtTime(110, time);
-      osc.frequency.exponentialRampToValueAtTime(55, time + 0.06);
-      amp.gain.setValueAtTime(0.0001, time);
-      amp.gain.exponentialRampToValueAtTime(Math.max(0.0001, gain), time + 0.01);
-      amp.gain.exponentialRampToValueAtTime(0.0001, time + 0.075);
+      osc.frequency.setValueAtTime(110, start);
+      osc.frequency.exponentialRampToValueAtTime(55, start + 0.06);
+      amp.gain.setValueAtTime(SILENT_GAIN, start);
+      amp.gain.exponentialRampToValueAtTime(Math.max(SILENT_GAIN, gain), start + 0.008);
+      amp.gain.exponentialRampToValueAtTime(SILENT_GAIN, end);
       osc.connect(amp);
       amp.connect(out);
-      osc.start(time);
-      osc.stop(time + 0.09);
+      osc.start(start);
+      osc.stop(end + 0.02);
     }
 
     function scheduleSnare(time, gain = 0.018) {
@@ -1083,6 +1112,16 @@ import { createWorldData } from "./worlds/index.js";
       if (!track) return;
       const stepDur = stepDurationSeconds(track);
       const steps = track.melody.length;
+      const scheduleFrom = ctx.currentTime + scheduleSafety;
+
+      if (nextStepTime < scheduleFrom - stepDur) {
+        const skippedSteps = Math.floor((scheduleFrom - nextStepTime) / stepDur);
+        if (skippedSteps > 0) {
+          step += skippedSteps;
+          nextStepTime += skippedSteps * stepDur;
+        }
+      }
+      if (nextStepTime < scheduleFrom) nextStepTime = scheduleFrom;
 
       while (nextStepTime < ctx.currentTime + scheduleAhead) {
         const i = step % steps;
@@ -1146,18 +1185,20 @@ import { createWorldData } from "./worlds/index.js";
       if (!trackName) return;
       if (!getTrack(trackName)) return;
       if (playingTrack === trackName && intervalId) return;
-      stop(0.06);
+      const restartFade = 0.06;
+      stop(restartFade);
 
       desiredTrack = trackName;
       playingTrack = trackName;
       step = 0;
-      nextStepTime = ctx.currentTime + 0.08;
+      const fadeInAt = ctx.currentTime + restartFade;
+      nextStepTime = fadeInAt + 0.02;
 
-      out.gain.cancelScheduledValues(ctx.currentTime);
-      out.gain.setValueAtTime(0.0001, ctx.currentTime);
-      out.gain.exponentialRampToValueAtTime(baseGain, ctx.currentTime + 0.12);
+      out.gain.setValueAtTime(0, fadeInAt);
+      out.gain.linearRampToValueAtTime(baseGain, fadeInAt + 0.12);
 
       intervalId = setInterval(schedulerTick, lookaheadMs);
+      schedulerTick();
     }
 
     function stop(fadeSeconds = 0.12) {
@@ -1167,12 +1208,8 @@ import { createWorldData } from "./worlds/index.js";
       }
 
       const now = ctx.currentTime;
-      out.gain.cancelScheduledValues(now);
-      out.gain.setValueAtTime(out.gain.value, now);
-      out.gain.exponentialRampToValueAtTime(
-        0.0001,
-        now + Math.max(0.02, fadeSeconds),
-      );
+      holdParamAtTime(out.gain, now);
+      out.gain.linearRampToValueAtTime(0, now + Math.max(0.02, fadeSeconds));
 
       playingTrack = null;
       step = 0;
@@ -1209,7 +1246,7 @@ import { createWorldData } from "./worlds/index.js";
 
     if (settings.audio) ensureAudioReady();
 
-    audioBus.master.gain.value = settings.audio ? 0.9 : 0.0;
+    rampGainTo(audioBus.master.gain, settings.audio ? 0.9 : 0.0, 0.04);
     bgm.refresh();
 
     playSfx("ui");
