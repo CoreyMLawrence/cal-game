@@ -2252,33 +2252,74 @@ import { createWorldData } from "./worlds/index.js";
       marker.pos = marker.pos.lerp(base.add(0, bounce), 0.18);
     });
 
-    const navRepeat = {
-      left: { held: false, nextAt: 0 },
-      right: { held: false, nextAt: 0 },
-      up: { held: false, nextAt: 0 },
-      down: { held: false, nextAt: 0 },
-    };
+    const WORLD_MAP_NAV_REPEAT_DELAY = 0.24;
+    const WORLD_MAP_NAV_REPEAT_INTERVAL = 0.12;
+    const WORLD_MAP_AXIS_SWITCH_THRESHOLD = 0.12;
 
-    function stepRepeatNav(state, isDown, step) {
-      if (!isDown) {
-        state.held = false;
-        return;
-      }
-      if (!state.held) {
-        state.held = true;
-        state.nextAt = time() + 0.24;
-        return;
-      }
-      if (time() >= state.nextAt) {
-        step();
-        state.nextAt = time() + 0.12;
-      }
+    function anyDigitalInputDown(binding) {
+      const keys = binding?.keys ?? [];
+      if (keys.some((k) => isKeyDown(k))) return true;
+
+      const buttons = binding?.buttons ?? [];
+      return buttons.some((b) => isGamepadButtonDown(b));
     }
 
-    onAnyInputPress(INPUT.left, () => moveSelection(-1));
-    onAnyInputPress(INPUT.right, () => moveSelection(1));
-    onAnyInputPress(INPUT.up, () => moveWorld(-1));
-    onAnyInputPress(INPUT.down, () => moveWorld(1));
+    function dominantDirectionFromVector(x, y, deadzone, previousDirection = null) {
+      const absX = Math.abs(x);
+      const absY = Math.abs(y);
+      if (Math.max(absX, absY) < deadzone) return null;
+
+      let preferHorizontal = absX >= absY;
+      if (
+        previousDirection &&
+        Math.abs(absX - absY) < WORLD_MAP_AXIS_SWITCH_THRESHOLD
+      ) {
+        preferHorizontal =
+          previousDirection === "left" || previousDirection === "right";
+      }
+
+      if (preferHorizontal) return x < 0 ? "left" : "right";
+      return y < 0 ? "up" : "down";
+    }
+
+    function resolveWorldMapDirection(previousDirection) {
+      const digitalX =
+        (anyDigitalInputDown(INPUT.left) ? -1 : 0) +
+        (anyDigitalInputDown(INPUT.right) ? 1 : 0);
+      const digitalY =
+        (anyDigitalInputDown(INPUT.up) ? -1 : 0) +
+        (anyDigitalInputDown(INPUT.down) ? 1 : 0);
+
+      if (digitalX !== 0 || digitalY !== 0) {
+        return dominantDirectionFromVector(
+          digitalX,
+          digitalY,
+          0,
+          previousDirection,
+        );
+      }
+
+      const stick = getGamepadStick("left");
+      return dominantDirectionFromVector(
+        stick.x,
+        stick.y,
+        GAMEPAD_STICK_DEADZONE,
+        previousDirection,
+      );
+    }
+
+    function stepWorldMapNav(direction) {
+      if (direction === "left") moveSelection(-1);
+      else if (direction === "right") moveSelection(1);
+      else if (direction === "up") moveWorld(-1);
+      else if (direction === "down") moveWorld(1);
+    }
+
+    const initialNavDirection = resolveWorldMapDirection(null);
+    const navRepeat = {
+      heldDirection: initialNavDirection,
+      nextAt: initialNavDirection ? Number.POSITIVE_INFINITY : 0,
+    };
 
     onAnyInputPress(INPUT.confirm, () => {
       const node = getNode(selectedLevelId);
@@ -2295,16 +2336,18 @@ import { createWorldData } from "./worlds/index.js";
     });
 
     onUpdate(() => {
-      stepRepeatNav(navRepeat.left, anyInputDown(INPUT.left), () =>
-        moveSelection(-1),
-      );
-      stepRepeatNav(navRepeat.right, anyInputDown(INPUT.right), () =>
-        moveSelection(1),
-      );
-      stepRepeatNav(navRepeat.up, anyInputDown(INPUT.up), () => moveWorld(-1));
-      stepRepeatNav(navRepeat.down, anyInputDown(INPUT.down), () =>
-        moveWorld(1),
-      );
+      const navDirection = resolveWorldMapDirection(navRepeat.heldDirection);
+      if (!navDirection) {
+        navRepeat.heldDirection = null;
+        navRepeat.nextAt = 0;
+      } else if (navRepeat.heldDirection !== navDirection) {
+        navRepeat.heldDirection = navDirection;
+        navRepeat.nextAt = time() + WORLD_MAP_NAV_REPEAT_DELAY;
+        stepWorldMapNav(navDirection);
+      } else if (time() >= navRepeat.nextAt) {
+        navRepeat.nextAt = time() + WORLD_MAP_NAV_REPEAT_INTERVAL;
+        stepWorldMapNav(navDirection);
+      }
 
       stats.text = `Lives: ${run.lives}   Coins: ${run.coins}   Score: ${run.score}`;
 
