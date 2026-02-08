@@ -3053,7 +3053,6 @@ import { createWorldData } from "./worlds/index.js";
     let lastStompAt = -Infinity;
     let vineTouchUntil = -Infinity;
     let climbingVine = false;
-    let playerPrevBottomY = player.pos.y + tileSize;
 
     const aura = add([
       circle(18),
@@ -3586,8 +3585,6 @@ import { createWorldData } from "./worlds/index.js";
     });
 
     onUpdate(() => {
-      playerPrevBottomY = player.pos.y + tileSize;
-
       // HUD.
       hudScore.text = `SCORE ${run.score}`;
       hudCoins.text = `x${run.coins}`;
@@ -3789,10 +3786,13 @@ import { createWorldData } from "./worlds/index.js";
       if (ending || !isCloudLevel || !col || !col.target || !col.target.is("cloudSemi"))
         return;
       const targetTop = col.target.pos.y;
-      const approachedFromAbove = playerPrevBottomY <= targetTop + 2;
-      const fallingOrStill = player.vel.y >= 0;
-      const validTopLanding = col.isBottom() && fallingOrStill && approachedFromAbove;
-      if (!validTopLanding) col.preventResolution();
+      const playerCenterY = player.pos.y + tileSize * 0.5;
+      const movingUp = player.vel.y < -1;
+      const mostlyBelowTop = playerCenterY >= targetTop + 2;
+
+      // Only ignore collision while rising from below a cloud tile.
+      // Any downward (or neutral) motion stays fully solid from above.
+      if (movingUp && mostlyBelowTop) col.preventResolution();
     });
 
     player.onCollide("fragileCloud", (fragile, col) => {
