@@ -1,0 +1,81 @@
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  background: radial-gradient(1200px 800px at 20% 10%, #243b55, #0b1020);
+  color: #e6edf3;
+}
+
+.app {
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 14px;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.5px;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.stage {
+  display: grid;
+  place-items: center;
+}
+
+.game {
+  /* Kaboom sets inline width/height when using a fixed internal resolution. */
+  width: min(1100px, 100%) !important;
+  height: auto !important;
+  aspect-ratio: 960 / 544;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+  background: #000;
+  outline: none;
+}
+
+.game:focus-visible {
+  box-shadow: 0 0 0 3px rgba(80, 180, 255, 0.5), 0 18px 60px rgba(0, 0, 0, 0.6);
+}
+
+.noscript {
+  padding: 12px 14px;
+  max-width: 560px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  font-size: 12px;
+  opacity: 0.75;
+}
