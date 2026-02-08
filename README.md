@@ -14,6 +14,7 @@ A tiny Mario-style side scroller built with plain **HTML + CSS + JavaScript** an
 - Move: Arrow keys or `A` / `D`
 - Jump: Space (or Up / `W`)
 - Run: Hold `Shift`
+- Pause: `Esc` or `P`
 - Enter: advance menus
 - `R`: restart level
 - `M`: mute / unmute

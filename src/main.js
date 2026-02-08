@@ -127,6 +127,10 @@ import { createWorldData } from "./worlds/index.js";
       keys: ["r"],
       buttons: ["select"],
     },
+    pause: {
+      keys: ["escape", "p"],
+      buttons: ["start"],
+    },
     mute: {
       keys: ["m"],
       buttons: ["home"],
@@ -3308,6 +3312,7 @@ import { createWorldData } from "./worlds/index.js";
     let timeLeft = levelSpec.timeLimit ?? CONFIG.timeLimit;
     let dustTimer = 0;
     let startLocked = true;
+    let pauseActive = false;
     let bossPowerDropTimer = rand(5.5, 8.5);
 
     // Training hints (only on the training level).
@@ -3359,6 +3364,166 @@ import { createWorldData } from "./worlds/index.js";
       ensureAudioReady();
       bgm.requestTrack(levelSpec.music ?? null);
     });
+
+    const pauseOverlay = add([
+      rect(width(), height()),
+      pos(0, 0),
+      color(0, 0, 0),
+      opacity(0),
+      fixed(),
+      z(6800),
+      "pauseUi",
+    ]);
+    pauseOverlay.hidden = true;
+
+    const pausePanel = add([
+      rect(430, 240, { radius: 14 }),
+      pos(width() / 2, height() / 2),
+      anchor("center"),
+      color(10, 18, 34),
+      opacity(0),
+      fixed(),
+      z(6801),
+      "pauseUi",
+    ]);
+    pausePanel.hidden = true;
+
+    const pauseTitle = add([
+      text("PAUSED", { size: 34, align: "center" }),
+      pos(width() / 2, height() / 2 - 72),
+      anchor("center"),
+      color(235, 242, 255),
+      opacity(0),
+      fixed(),
+      z(6802),
+      "pauseUi",
+    ]);
+    pauseTitle.hidden = true;
+
+    const pauseOptions = ["RESUME", "RETURN TO MAP"];
+    let pauseSelection = 0;
+    let pauseInputCooldownUntil = 0;
+    const pauseOptionTexts = pauseOptions.map((label, i) => {
+      const y = height() / 2 + 2 + i * 44;
+      const item = add([
+        text(label, { size: 24, align: "center" }),
+        pos(width() / 2, y),
+        anchor("center"),
+        color(215, 225, 245),
+        opacity(0),
+        fixed(),
+        z(6802),
+        "pauseUi",
+      ]);
+      item.hidden = true;
+      return item;
+    });
+
+    const pauseHint = add([
+      text("Confirm: Enter / A   Pause: Esc / P", {
+        size: 14,
+        align: "center",
+      }),
+      pos(width() / 2, height() / 2 + 92),
+      anchor("center"),
+      color(188, 200, 224),
+      opacity(0),
+      fixed(),
+      z(6802),
+      "pauseUi",
+    ]);
+    pauseHint.hidden = true;
+
+    function setGameplayObjectsPaused(next) {
+      for (const obj of get("*")) {
+        if (!obj || !obj.exists()) continue;
+        if (obj.is("pauseUi")) continue;
+        if (obj.fixed) continue;
+        obj.paused = next;
+      }
+    }
+
+    function updatePauseMenuVisuals() {
+      if (!pauseActive) return;
+      for (let i = 0; i < pauseOptionTexts.length; i++) {
+        const selected = i === pauseSelection;
+        pauseOptionTexts[i].color = selected ? rgb(170, 235, 255) : rgb(215, 225, 245);
+        pauseOptionTexts[i].opacity = selected ? 1 : 0.88;
+        pauseOptionTexts[i].scale = selected ? vec2(1.05) : vec2(1);
+      }
+    }
+
+    function closePauseMenu({ resumeMusic = true } = {}) {
+      if (!pauseActive) return;
+      pauseActive = false;
+      setGameplayObjectsPaused(false);
+
+      pauseOverlay.hidden = true;
+      pausePanel.hidden = true;
+      pauseTitle.hidden = true;
+      pauseHint.hidden = true;
+      pauseOverlay.opacity = 0;
+      pausePanel.opacity = 0;
+      pauseTitle.opacity = 0;
+      pauseHint.opacity = 0;
+      for (const optionText of pauseOptionTexts) {
+        optionText.hidden = true;
+        optionText.opacity = 0;
+      }
+
+      if (resumeMusic && !ending) {
+        ensureAudioReady();
+        bgm.requestTrack(levelSpec.music ?? null);
+      }
+    }
+
+    function openPauseMenu() {
+      if (pauseActive || ending || startLocked) return;
+      pauseActive = true;
+      pauseSelection = 0;
+      pauseInputCooldownUntil = time() + 0.08;
+      setGameplayObjectsPaused(true);
+      bgm.stop(0.05);
+
+      pauseOverlay.hidden = false;
+      pausePanel.hidden = false;
+      pauseTitle.hidden = false;
+      pauseHint.hidden = false;
+      pauseOverlay.opacity = 0.62;
+      pausePanel.opacity = 0.95;
+      pauseTitle.opacity = 1;
+      pauseHint.opacity = 0.95;
+      for (const optionText of pauseOptionTexts) {
+        optionText.hidden = false;
+        optionText.opacity = 0.95;
+      }
+      updatePauseMenuVisuals();
+    }
+
+    function movePauseSelection(delta) {
+      if (!pauseActive) return;
+      pauseSelection =
+        (pauseSelection + delta + pauseOptions.length) % pauseOptions.length;
+      playSfx("ui");
+      updatePauseMenuVisuals();
+    }
+
+    function confirmPauseSelection() {
+      if (!pauseActive) return;
+      if (pauseSelection === 0) {
+        playSfx("ui");
+        closePauseMenu({ resumeMusic: true });
+        return;
+      }
+
+      playSfx("ui");
+      closePauseMenu({ resumeMusic: false });
+      go("worldMap", {
+        characterId,
+        worldId: levelWorldId,
+        focusLevelId: levelId,
+      });
+    }
 
     // Camera: forward-biased follow that still allows backtracking.
     const halfW = width() / 2;
@@ -3560,21 +3725,53 @@ import { createWorldData } from "./worlds/index.js";
     }
 
     // Controls + gameplay updates.
+    onAnyInputPress(INPUT.pause, () => {
+      if (pauseActive) {
+        closePauseMenu({ resumeMusic: true });
+        playSfx("ui");
+        return;
+      }
+      openPauseMenu();
+      if (pauseActive) playSfx("ui");
+    });
+
+    onAnyInputPress(INPUT.up, () => {
+      if (!pauseActive) return;
+      movePauseSelection(-1);
+    });
+    onAnyInputPress(INPUT.down, () => {
+      if (!pauseActive) return;
+      movePauseSelection(1);
+    });
+    onAnyInputPress(INPUT.left, () => {
+      if (!pauseActive) return;
+      movePauseSelection(-1);
+    });
+    onAnyInputPress(INPUT.right, () => {
+      if (!pauseActive) return;
+      movePauseSelection(1);
+    });
+    onAnyInputPress(INPUT.confirm, () => {
+      if (!pauseActive) return;
+      if (time() < pauseInputCooldownUntil) return;
+      confirmPauseSelection();
+    });
+
     onAnyInputPress(INPUT.jump, (inputName) => {
-      if (ending) return;
+      if (ending || pauseActive) return;
       if (climbingVine && INPUT.up.keys.includes(inputName)) return;
       ensureAudioReady();
       jumpQueuedAt = time();
     });
 
     onAnyInputRelease(INPUT.jump, () => {
-      if (ending) return;
+      if (ending || pauseActive) return;
       // “Short hop” for more control.
       if (player.vel.y < 0) player.vel.y *= CONFIG.shortHopCut;
     });
 
     onAnyInputPress(INPUT.restart, () => {
-      if (ending) return;
+      if (ending || pauseActive) return;
       bgm.stop(0.06);
       go("game", { characterId, levelId });
     });
@@ -3601,7 +3798,8 @@ import { createWorldData } from "./worlds/index.js";
         hudPower.text = "POWER —";
         hudPower.use(color(255, 255, 255));
       }
-      hudAudio.text = settings.audio ? "M: MUTE" : "M: UNMUTE";
+      if (pauseActive) hudAudio.text = "PAUSED";
+      else hudAudio.text = settings.audio ? "ESC/P: PAUSE • M: MUTE" : "ESC/P: PAUSE • M: UNMUTE";
 
       aura.pos = player.pos.add(tileSize / 2, tileSize / 2);
       if (run.power === "charged") {
@@ -3633,6 +3831,11 @@ import { createWorldData } from "./worlds/index.js";
           tutorialIndex += 1;
           tutorialText.text = tutorialSteps[tutorialIndex].text;
         }
+      }
+
+      if (pauseActive) {
+        updatePauseMenuVisuals();
+        return;
       }
 
       if (ending) return;
