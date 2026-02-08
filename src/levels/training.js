@@ -40,6 +40,8 @@ export function buildTrainingLevel() {
 
   // Goal pole at the end.
   put(cols - 6, 10, "!");
+  // Hidden step to hop above the pole if discovered.
+  put(cols - 7, 8, "h");
 
   return toMap();
 }

@@ -2502,6 +2502,7 @@ import { createWorldData } from "./worlds/index.js";
     let goalPoleTile = null;
     let goalDoorTile = null;
     let bossTile = null;
+    const hiddenBlockTileKeys = new Set();
 
     const map = levelSpec.buildMap();
     const mapGroundY = map.length - 1;
@@ -2824,6 +2825,10 @@ import { createWorldData } from "./worlds/index.js";
       ];
     }
 
+    function hiddenTileKey(tilePos) {
+      return `${Math.floor(tilePos.x)},${Math.floor(tilePos.y)}`;
+    }
+
     const level = addLevel(map, {
       tileWidth: tileSize,
       tileHeight: tileSize,
@@ -2872,6 +2877,10 @@ import { createWorldData } from "./worlds/index.js";
         W: () => questionBlockTile("wing"),
         S: () => questionBlockTile("supercoin"),
         O: () => superCoinTile(),
+        h: (tilePos) => {
+          hiddenBlockTileKeys.add(hiddenTileKey(tilePos));
+          return null;
+        },
         "@": (tilePos) => {
           playerSpawnTile = tilePos.clone();
           return null;
@@ -3416,6 +3425,49 @@ import { createWorldData } from "./worlds/index.js";
         ]);
       }
       destroy(brick);
+    }
+
+    function revealHiddenBlock(tilePos) {
+      if (!tilePos) return false;
+      const key = hiddenTileKey(tilePos);
+      if (!hiddenBlockTileKeys.has(key)) return false;
+      hiddenBlockTileKeys.delete(key);
+
+      const normalized = vec2(Math.floor(tilePos.x), Math.floor(tilePos.y));
+      const blockPos = level.tile2Pos(normalized);
+      add([
+        sprite("used-block"),
+        pos(blockPos),
+        area(),
+        body({ isStatic: true }),
+        "solid",
+        "hiddenBlock",
+      ]);
+
+      // Hidden block behaves like a head bump: reveal, stop upward motion, and keep player below.
+      playSfx("bump");
+      const blockBottomY = blockPos.y + tileSize;
+      if (player.pos.y < blockBottomY) player.pos.y = blockBottomY;
+      if (player.vel.y < 0) player.vel.y = 0;
+
+      return true;
+    }
+
+    function tryRevealHiddenBlockFromHead() {
+      if (hiddenBlockTileKeys.size === 0) return;
+      if (player.vel.y >= -1) return;
+
+      const sampleY = player.pos.y - 1;
+      const sampleXs = [
+        player.pos.x + tileSize * 0.18,
+        player.pos.x + tileSize * 0.5,
+        player.pos.x + tileSize * 0.82,
+      ];
+
+      for (const sampleX of sampleXs) {
+        const tilePos = level.pos2Tile(vec2(sampleX, sampleY));
+        if (revealHiddenBlock(tilePos)) return;
+      }
     }
 
     // HUD.
@@ -4137,6 +4189,7 @@ import { createWorldData } from "./worlds/index.js";
 
       player.flipX = facing < 0;
       player.move(velX, 0);
+      tryRevealHiddenBlockFromHead();
 
       if (wingActive && player.pos.y < flightCeilingY) {
         player.pos.y = flightCeilingY;

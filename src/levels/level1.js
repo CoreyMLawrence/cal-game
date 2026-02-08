@@ -17,7 +17,8 @@ export function buildLevel1() {
     { start: 96, width: 4 },
   ];
   for (const pit of pits) {
-    for (let x = pit.start; x < pit.start + pit.width; x++) put(x, groundY, " ");
+    for (let x = pit.start; x < pit.start + pit.width; x++)
+      put(x, groundY, " ");
   }
 
   // Player spawn.
@@ -69,10 +70,12 @@ export function buildLevel1() {
 
   // End-of-level set piece.
   put(cols - 6, 10, "!");
+  // Hidden step to hop above the pole if discovered.
+  put(cols - 7, 8, "h");
   put(cols - 12, 6, "U");
 
   // Staircase near the end.
-  const stairBaseX = cols - 28;
+  const stairBaseX = cols - 18;
   for (let i = 0; i < 6; i++) {
     for (let y = 0; y <= i; y++) put(stairBaseX + i, rows - 2 - y, "#");
   }

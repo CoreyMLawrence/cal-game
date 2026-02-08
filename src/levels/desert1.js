@@ -80,6 +80,8 @@ export function buildDesert1Level() {
 
   // End setup.
   put(cols - 6, 10, "!");
+  // Hidden step to hop above the pole if discovered.
+  put(cols - 7, 8, "h");
   put(cols - 13, 6, "U");
 
   // End reward lane.
