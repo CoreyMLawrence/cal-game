@@ -58,8 +58,10 @@ import { createWorldData } from "./worlds/index.js";
     wingGravityScale: 0.34,
     wingRiseSpeed: 390,
     wingGlideFallSpeed: 88,
+    wingDiveFallSpeed: 250,
     wingLiftAccel: 1700,
     vineClimbSpeed: 170,
+    vineJumpDetachSeconds: 0.2,
   });
 
   const STORAGE = Object.freeze({
@@ -3193,9 +3195,11 @@ import { createWorldData } from "./worlds/index.js";
     let stompCombo = 0;
     let lastStompAt = -Infinity;
     let vineTouchUntil = -Infinity;
+    let vineDetachUntil = -Infinity;
     let climbingVine = false;
     let crossedGoalPoleWithoutGrab = false;
     const secretRouteExitX = level.levelWidth() + tileSize * 0.6;
+    const flightCeilingY = -tileSize * 2;
 
     const aura = add([
       circle(18),
@@ -4059,8 +4063,9 @@ import { createWorldData } from "./worlds/index.js";
       const touchingVine = time() < vineTouchUntil;
       const climbUp = anyInputDown(INPUT.up);
       const climbDown = anyInputDown(INPUT.down);
-      if (!touchingVine) climbingVine = false;
-      if (touchingVine && (climbUp || climbDown || climbingVine)) {
+      const vineReattachLocked = time() < vineDetachUntil;
+      if (!touchingVine || vineReattachLocked) climbingVine = false;
+      if (!vineReattachLocked && touchingVine && (climbUp || climbDown || climbingVine)) {
         climbingVine = true;
       }
 
@@ -4109,17 +4114,21 @@ import { createWorldData } from "./worlds/index.js";
         );
       } else if (wingActive) {
         player.gravityScale = CONFIG.wingGravityScale;
-        if (anyInputDown(INPUT.jump)) {
+        if (anyInputDown(INPUT.jump) && !climbDown) {
           player.vel.y = approach(
             player.vel.y,
             -CONFIG.wingRiseSpeed,
             CONFIG.wingLiftAccel * dt(),
           );
         } else {
+          const wingFallTarget = climbDown
+            ? CONFIG.wingDiveFallSpeed
+            : CONFIG.wingGlideFallSpeed;
+          const wingFallAccel = CONFIG.wingLiftAccel * (climbDown ? 1.1 : 0.65);
           player.vel.y = approach(
             player.vel.y,
-            CONFIG.wingGlideFallSpeed,
-            CONFIG.wingLiftAccel * 0.65 * dt(),
+            wingFallTarget,
+            wingFallAccel * dt(),
           );
         }
       } else {
@@ -4128,6 +4137,11 @@ import { createWorldData } from "./worlds/index.js";
 
       player.flipX = facing < 0;
       player.move(velX, 0);
+
+      if (wingActive && player.pos.y < flightCeilingY) {
+        player.pos.y = flightCeilingY;
+        if (player.vel.y < 0) player.vel.y = 0;
+      }
 
       const camLeftEdge = updateCamera();
       if (player.pos.x < camLeftEdge + 8) {
@@ -4158,6 +4172,11 @@ import { createWorldData } from "./worlds/index.js";
       if (buffered && (jumpedFromVine || player.isGrounded() || canCoyote)) {
         jumpQueuedAt = -Infinity;
         climbingVine = false;
+        if (jumpedFromVine) {
+          vineDetachUntil = time() + CONFIG.vineJumpDetachSeconds;
+          const vineJumpDir = moveDir !== 0 ? moveDir : facing;
+          velX = vineJumpDir * Math.max(Math.abs(velX), CONFIG.walkSpeed * 0.55);
+        }
         player.gravityScale = wingActive ? CONFIG.wingGravityScale : 1;
         player.jump(jumpedFromVine ? CONFIG.jumpForce * 0.88 : CONFIG.jumpForce);
         playSfx("jump");
