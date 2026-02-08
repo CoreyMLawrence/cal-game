@@ -5,6 +5,7 @@ import {
   buildDesert1Level,
   buildLevel1,
   buildLevel2,
+  buildSecretPowerupLevel,
   buildTrainingLevel,
 } from "./levels/index.js";
 import { createWorldData } from "./worlds/index.js";
@@ -44,6 +45,7 @@ import { createWorldData } from "./worlds/index.js";
 
     // Scoring.
     coinValue: 100,
+    superCoinValue: 1000,
     powerValue: 1000,
     levelClearValue: 2000,
     timeBonusPerSecond: 50,
@@ -136,6 +138,8 @@ import { createWorldData } from "./worlds/index.js";
       buttons: ["home"],
     },
   });
+
+  const SECRET_POWERUP_LEVEL_ID = "secretPowerup";
 
   function stickBindingDown(stickBinding) {
     if (!stickBinding) return false;
@@ -1287,6 +1291,7 @@ import { createWorldData } from "./worlds/index.js";
     question: "assets/question.svg",
     usedBlock: "assets/used-block.svg",
     coin: "assets/coin.svg",
+    superCoin: "assets/super-coin.svg",
     battery: "assets/battery.svg",
     wing: "assets/wing.svg",
     vine: "assets/vine.svg",
@@ -1314,6 +1319,7 @@ import { createWorldData } from "./worlds/index.js";
   loadSprite("question", ASSETS.question);
   loadSprite("used-block", ASSETS.usedBlock);
   loadSprite("coin", ASSETS.coin);
+  loadSprite("super-coin", ASSETS.superCoin);
   loadSprite("battery", ASSETS.battery);
   loadSprite("wing", ASSETS.wing);
   loadSprite("vine", ASSETS.vine);
@@ -1457,6 +1463,16 @@ import { createWorldData } from "./worlds/index.js";
         },
       ],
     },
+    [SECRET_POWERUP_LEVEL_ID]: {
+      id: SECRET_POWERUP_LEVEL_ID,
+      title: "SECRET POWER STASH",
+      buildMap: buildSecretPowerupLevel,
+      timeLimit: 70,
+      nextLevelId: null,
+      music: "overworld",
+      tutorialSteps: null,
+      isSecretBonus: true,
+    },
   });
 
   const run = {
@@ -1493,6 +1509,12 @@ import { createWorldData } from "./worlds/index.js";
     if (worldPos) addFloatingText(`+${points}`, worldPos, rgb(255, 255, 255));
   }
 
+  function awardOneUp(worldPos, label = "1UP!") {
+    run.lives += 1;
+    playSfx("1up");
+    if (worldPos) addFloatingText(label, worldPos, rgb(52, 199, 89));
+  }
+
   function addCoin(worldPos) {
     run.coins += 1;
     run.score += CONFIG.coinValue;
@@ -1501,9 +1523,7 @@ import { createWorldData } from "./worlds/index.js";
       addFloatingText(`+${CONFIG.coinValue}`, worldPos, rgb(255, 214, 10));
 
     if (run.coins > 0 && run.coins % CONFIG.coinsPer1Up === 0) {
-      run.lives += 1;
-      playSfx("1up");
-      if (worldPos) addFloatingText("1UP!", worldPos, rgb(52, 199, 89));
+      awardOneUp(worldPos);
     }
   }
 
@@ -2455,6 +2475,18 @@ import { createWorldData } from "./worlds/index.js";
     const characterId = data?.characterId ?? "cal";
     const levelId = data?.levelId ?? "training";
     const levelSpec = LEVELS[levelId] ?? LEVELS.level1;
+    const returnLevelId =
+      typeof data?.returnLevelId === "string" ? data.returnLevelId : null;
+    const returnWorldId =
+      typeof data?.returnWorldId === "string" ? data.returnWorldId : null;
+    const forcedNextLevelId = levelSpec.isSecretBonus ? returnLevelId : null;
+    const forcedWorldId = levelSpec.isSecretBonus ? returnWorldId : null;
+    const restartGameData = {
+      characterId,
+      levelId,
+      ...(forcedNextLevelId ? { returnLevelId: forcedNextLevelId } : {}),
+      ...(forcedWorldId ? { returnWorldId: forcedWorldId } : {}),
+    };
     const levelWorldId = worldIdForLevel(levelId);
     const levelWorld = WORLD_MAPS[levelWorldId] ?? WORLD_MAPS.world1;
     const levelTheme = WORLD_THEMES[levelWorld.themeId] ?? WORLD_THEMES.grassy;
@@ -2666,6 +2698,29 @@ import { createWorldData } from "./worlds/index.js";
       ];
     }
 
+    function superCoinTile({ activeAtStart = true } = {}) {
+      let baseY = null;
+      let phase = 0;
+      return [
+        sprite("super-coin"),
+        area(),
+        "superCoin",
+        {
+          active: activeAtStart,
+          add() {
+            phase = rand(0, Math.PI * 2);
+            if (this.active) baseY = this.pos.y;
+          },
+          update() {
+            if (!this.active) return;
+            if (baseY == null) baseY = this.pos.y;
+            this.pos.y = baseY + Math.sin(time() * 4.6 + phase) * 2.4;
+            this.opacity = 0.84 + Math.abs(Math.sin(time() * 8.2 + phase)) * 0.16;
+          },
+        },
+      ];
+    }
+
     function lavaTile() {
       let baseY = null;
       let phase = 0;
@@ -2813,6 +2868,8 @@ import { createWorldData } from "./worlds/index.js";
         "?": () => questionBlockTile("coin"),
         "*": () => questionBlockTile("battery"),
         W: () => questionBlockTile("wing"),
+        S: () => questionBlockTile("supercoin"),
+        O: () => superCoinTile(),
         "@": (tilePos) => {
           playerSpawnTile = tilePos.clone();
           return null;
@@ -3137,6 +3194,8 @@ import { createWorldData } from "./worlds/index.js";
     let lastStompAt = -Infinity;
     let vineTouchUntil = -Infinity;
     let climbingVine = false;
+    let crossedGoalPoleWithoutGrab = false;
+    const secretRouteExitX = level.levelWidth() + tileSize * 0.6;
 
     const aura = add([
       circle(18),
@@ -3188,7 +3247,7 @@ import { createWorldData } from "./worlds/index.js";
 
       wait(0.9, () => {
         if (run.lives > 0) {
-          go("game", { characterId, levelId });
+          go("game", restartGameData);
         } else {
           maybeUpdateBest({
             score: run.score,
@@ -3240,6 +3299,26 @@ import { createWorldData } from "./worlds/index.js";
       });
 
       return p;
+    }
+
+    function spawnSuperCoin(worldPos) {
+      const superCoin = add([
+        ...superCoinTile({ activeAtStart: false }),
+        pos(worldPos),
+        z(1600),
+      ]);
+
+      tween(
+        superCoin.pos.y,
+        superCoin.pos.y - tileSize,
+        0.3,
+        (y) => (superCoin.pos.y = y),
+        easings.easeOutQuad,
+      ).then(() => {
+        superCoin.active = true;
+      });
+
+      return superCoin;
     }
 
     function spawnFallingPowerup(kind, spawnX) {
@@ -3308,6 +3387,8 @@ import { createWorldData } from "./worlds/index.js";
           z(1600),
         ]);
         wait(0.4, () => destroy(coinFx));
+      } else if (reward === "supercoin") {
+        spawnSuperCoin(block.pos.clone());
       } else if (POWERUP_SPECS[reward]) {
         spawnPowerup(reward, block.pos.clone());
       }
@@ -3645,7 +3726,8 @@ import { createWorldData } from "./worlds/index.js";
     }
 
     function buildLevelClearPayload({ goalBonus = 0, bonusLabel = "Flag Bonus" } = {}) {
-      const focusLevelId = levelSpec.nextLevelId ?? levelId;
+      const nextLevelId = forcedNextLevelId ?? levelSpec.nextLevelId ?? null;
+      const focusLevelId = nextLevelId ?? levelId;
       const timeBonus =
         Math.max(0, Math.floor(timeLeft)) * CONFIG.timeBonusPerSecond;
       run.score += timeBonus;
@@ -3662,14 +3744,14 @@ import { createWorldData } from "./worlds/index.js";
 
       return {
         levelId,
-        worldId: worldIdForLevel(focusLevelId),
+        worldId: forcedWorldId ?? worldIdForLevel(focusLevelId),
         score: run.score,
         coins: run.coins,
         timeBonus,
         flagBonus: goalBonus,
         bonusLabel,
         title: `${levelSpec.title} CLEAR!`,
-        nextLevelId: levelSpec.nextLevelId,
+        nextLevelId,
         characterId,
       };
     }
@@ -3724,6 +3806,42 @@ import { createWorldData } from "./worlds/index.js";
           }
         });
       });
+    }
+
+    function enterSecretPowerupRoute() {
+      if (ending) return;
+      ending = true;
+
+      bgm.stop(0.08);
+      playSfx("clear");
+      addScore(CONFIG.levelClearValue, player.pos.add(tileSize / 2, 0));
+
+      const secretBonus = 1200;
+      addScore(secretBonus, player.pos.add(tileSize / 2, -10));
+      addFloatingText(
+        "SECRET ROUTE!",
+        player.pos.add(tileSize / 2, -30),
+        rgb(170, 235, 255),
+      );
+
+      const clearPayload = buildLevelClearPayload({
+        goalBonus: secretBonus,
+        bonusLabel: "Secret Route Bonus",
+      });
+
+      player.vel = vec2(0, 0);
+      player.gravityScale = 0;
+
+      tween(1, 0.12, 0.28, (a) => (player.opacity = a), easings.linear).then(
+        () => {
+          go("game", {
+            characterId,
+            levelId: SECRET_POWERUP_LEVEL_ID,
+            returnLevelId: clearPayload.nextLevelId,
+            returnWorldId: clearPayload.worldId,
+          });
+        },
+      );
     }
 
     function completeDoorLevel(door) {
@@ -3853,7 +3971,7 @@ import { createWorldData } from "./worlds/index.js";
     onAnyInputPress(INPUT.restart, () => {
       if (ending || pauseActive) return;
       bgm.stop(0.06);
-      go("game", { characterId, levelId });
+      go("game", restartGameData);
     });
 
     player.onGround(() => {
@@ -4017,6 +4135,16 @@ import { createWorldData } from "./worlds/index.js";
         velX = Math.max(0, velX);
       }
 
+      if (!levelSpec.isSecretBonus && pole) {
+        if (!crossedGoalPoleWithoutGrab && player.pos.x > pole.pos.x + tileSize * 0.75) {
+          crossedGoalPoleWithoutGrab = true;
+        }
+        if (crossedGoalPoleWithoutGrab && player.pos.x >= secretRouteExitX) {
+          enterSecretPowerupRoute();
+          return;
+        }
+      }
+
       dustTimer += dt();
       if (player.isGrounded() && Math.abs(velX) > 120 && dustTimer > 0.14) {
         dustTimer = 0;
@@ -4045,6 +4173,20 @@ import { createWorldData } from "./worlds/index.js";
       if (ending) return;
       destroy(coin);
       addCoin(player.pos.add(tileSize / 2, 0));
+    });
+
+    player.onCollide("superCoin", (superCoin) => {
+      if (ending) return;
+      if (!superCoin || !superCoin.exists()) return;
+      destroy(superCoin);
+      run.score += CONFIG.superCoinValue;
+      playSfx("coin");
+      addFloatingText(
+        `+${CONFIG.superCoinValue}`,
+        player.pos.add(tileSize / 2, -2),
+        rgb(255, 214, 10),
+      );
+      awardOneUp(player.pos.add(tileSize / 2, -20), "SUPER 1UP!");
     });
 
     // Power-ups.

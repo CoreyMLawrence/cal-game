@@ -5,3 +5,4 @@ export { buildCastle1Level } from "./castle1.js";
 export { buildBoss1Level } from "./boss1.js";
 export { buildDesert1Level } from "./desert1.js";
 export { buildCloud1Level } from "./cloud1.js";
+export { buildSecretPowerupLevel } from "./secretPowerup.js";
