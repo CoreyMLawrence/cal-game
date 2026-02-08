@@ -2386,6 +2386,7 @@ import { createWorldData } from "./worlds/index.js";
     let bossTile = null;
 
     const map = levelSpec.buildMap();
+    const mapGroundY = map.length - 1;
     const tileSize = CONFIG.tileSize;
     const groundSpriteName = isCastleLevel
       ? "ground-castle"
@@ -2686,10 +2687,16 @@ import { createWorldData } from "./worlds/index.js";
       tileWidth: tileSize,
       tileHeight: tileSize,
       tiles: {
-        "=": () =>
-          solidTile(groundSpriteName, isCloudLevel ? ["cloudSemi"] : []),
-        "#": () =>
-          solidTile(blockSpriteName, isCloudLevel ? ["cloudSemi"] : []),
+        "=": (tilePos) =>
+          solidTile(
+            groundSpriteName,
+            isCloudLevel && tilePos.y < mapGroundY ? ["cloudSemi"] : [],
+          ),
+        "#": (tilePos) =>
+          solidTile(
+            blockSpriteName,
+            isCloudLevel && tilePos.y < mapGroundY ? ["cloudSemi"] : [],
+          ),
         B: () => solidTile(blockSpriteName, ["brick", "breakable"]),
         "~": () => [
           ...solidTile(
@@ -3046,6 +3053,7 @@ import { createWorldData } from "./worlds/index.js";
     let lastStompAt = -Infinity;
     let vineTouchUntil = -Infinity;
     let climbingVine = false;
+    let playerPrevBottomY = player.pos.y + tileSize;
 
     const aura = add([
       circle(18),
@@ -3578,6 +3586,8 @@ import { createWorldData } from "./worlds/index.js";
     });
 
     onUpdate(() => {
+      playerPrevBottomY = player.pos.y + tileSize;
+
       // HUD.
       hudScore.text = `SCORE ${run.score}`;
       hudCoins.text = `x${run.coins}`;
@@ -3776,9 +3786,13 @@ import { createWorldData } from "./worlds/index.js";
 
     // One-way clouds: pass through from below, but land when falling onto top.
     player.onBeforePhysicsResolve((col) => {
-      if (ending || !col || !col.target || !col.target.is("cloudSemi")) return;
+      if (ending || !isCloudLevel || !col || !col.target || !col.target.is("cloudSemi"))
+        return;
+      const targetTop = col.target.pos.y;
+      const approachedFromAbove = playerPrevBottomY <= targetTop + 2;
       const fallingOrStill = player.vel.y >= 0;
-      if (!(col.isBottom() && fallingOrStill)) col.preventResolution();
+      const validTopLanding = col.isBottom() && fallingOrStill && approachedFromAbove;
+      if (!validTopLanding) col.preventResolution();
     });
 
     player.onCollide("fragileCloud", (fragile, col) => {
