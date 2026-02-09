@@ -79,6 +79,65 @@ export function registerGameScene(ctx) {
       : isCloudLevel
         ? "ground-cloud"
         : "block";
+    const PERF_CULL_MARGIN = tileSize * 8;
+    const PERF_HALF_VIEW_W = width() / 2;
+    const PERF_HALF_VIEW_H = height() / 2;
+    const perfCullables = [];
+    let worldDeathY = 0;
+
+    function perfCull({ margin = PERF_CULL_MARGIN, hide = true } = {}) {
+      return {
+        id: "perfCull",
+        require: ["pos"],
+        cullMargin: margin,
+        hideWhenCulled: hide,
+        culledByPerf: false,
+        add() {
+          perfCullables.push(this);
+        },
+        destroy() {
+          const idx = perfCullables.indexOf(this);
+          if (idx !== -1) perfCullables.splice(idx, 1);
+        },
+      };
+    }
+
+    function updatePerfCullables() {
+      if (pauseActive) return;
+      const camera = camPos();
+      const left = camera.x - PERF_HALF_VIEW_W;
+      const right = camera.x + PERF_HALF_VIEW_W;
+      const top = camera.y - PERF_HALF_VIEW_H;
+      const bottom = camera.y + PERF_HALF_VIEW_H;
+
+      for (let i = perfCullables.length - 1; i >= 0; i--) {
+        const obj = perfCullables[i];
+        if (!obj || !obj.exists()) {
+          perfCullables.splice(i, 1);
+          continue;
+        }
+
+        const margin = obj.cullMargin ?? PERF_CULL_MARGIN;
+        const inViewBand =
+          obj.pos.x >= left - margin &&
+          obj.pos.x <= right + margin &&
+          obj.pos.y >= top - margin &&
+          obj.pos.y <= bottom + margin;
+
+        if (inViewBand) {
+          if (!obj.culledByPerf) continue;
+          obj.culledByPerf = false;
+          obj.paused = false;
+          if (obj.hideWhenCulled) obj.hidden = false;
+          continue;
+        }
+
+        if (obj.culledByPerf) continue;
+        obj.culledByPerf = true;
+        obj.paused = true;
+        if (obj.hideWhenCulled) obj.hidden = true;
+      }
+    }
 
     function tileTintFor(spriteName) {
       if (!isDesertLevel) return null;
@@ -94,6 +153,7 @@ export function registerGameScene(ctx) {
         ...(tint ? [color(tint.r, tint.g, tint.b)] : []),
         area(),
         body({ isStatic: true }),
+        perfCull(),
         "solid",
         ...extra,
       ];
@@ -130,6 +190,7 @@ export function registerGameScene(ctx) {
           scale: vec2(0.42, 1),
           offset: vec2(9.2, 0),
         }),
+        perfCull(),
         "vine",
         {
           add() {
@@ -151,6 +212,7 @@ export function registerGameScene(ctx) {
         sprite("ground-cloud"),
         area(),
         body({ isStatic: true }),
+        perfCull(),
         "solid",
         "platform",
         "cloudSemi",
@@ -248,6 +310,7 @@ export function registerGameScene(ctx) {
       return [
         sprite("coin"),
         area(),
+        perfCull(),
         "coin",
         {
           add() {
@@ -267,6 +330,7 @@ export function registerGameScene(ctx) {
       return [
         sprite("super-coin"),
         area(),
+        perfCull(),
         "superCoin",
         {
           active: activeAtStart,
@@ -293,6 +357,7 @@ export function registerGameScene(ctx) {
           scale: vec2(0.9, 0.5),
           offset: vec2(1.5, 14.5),
         }),
+        perfCull(),
         "hazard",
         "lava",
         {
@@ -316,6 +381,7 @@ export function registerGameScene(ctx) {
           scale: vec2(0.52, 0.74),
           offset: vec2(7.7, 6.8),
         }),
+        perfCull(),
         "hazard",
         "fire",
         {
@@ -343,6 +409,7 @@ export function registerGameScene(ctx) {
             scale: vec2(0.72, 0.72),
             offset: vec2(4.5, 8.3),
           }),
+          perfCull({ margin: tileSize * 10 }),
           "enemy",
           "danger",
           "flyingEnemy",
@@ -361,8 +428,7 @@ export function registerGameScene(ctx) {
                 this.home.y + Math.sin(t * this.flightSwoopFactor) * this.flightRangeY;
               this.flipX = nextX > this.pos.x;
               this.pos = vec2(nextX, nextY);
-              const deathY = level.levelHeight() + CONFIG.fallDeathPadding;
-              if (this.pos.y > deathY) destroy(this);
+              if (this.pos.y > worldDeathY) destroy(this);
             },
           },
         ];
@@ -375,6 +441,7 @@ export function registerGameScene(ctx) {
           offset: vec2(4.5, 8.3),
         }),
         body(),
+        perfCull({ margin: tileSize * 10 }),
         "enemy",
         "danger",
         {
@@ -483,6 +550,7 @@ export function registerGameScene(ctx) {
           }),
       },
     });
+    worldDeathY = level.levelHeight() + CONFIG.fallDeathPadding;
 
     function addGrassyLevelBackdrop() {
       const cloudLayer = add([pos(0, 0), z(-200)]);
@@ -793,6 +861,7 @@ export function registerGameScene(ctx) {
         pos(worldPos),
         area(),
         body(),
+        perfCull({ margin: tileSize * 8 }),
         "powerup",
         {
           kind,
@@ -817,8 +886,7 @@ export function registerGameScene(ctx) {
       p.onUpdate(() => {
         if (!p.active || ending) return;
         p.move(p.dir * p.speed, 0);
-        const deathY = level.levelHeight() + CONFIG.fallDeathPadding;
-        if (p.pos.y > deathY) destroy(p);
+        if (p.pos.y > worldDeathY) destroy(p);
       });
 
       p.onCollide("solid", (_solid, col) => {
@@ -856,6 +924,7 @@ export function registerGameScene(ctx) {
         pos(x, tileSize * 3),
         area(),
         body(),
+        perfCull({ margin: tileSize * 8 }),
         "powerup",
         {
           kind,
@@ -868,8 +937,7 @@ export function registerGameScene(ctx) {
       p.onUpdate(() => {
         if (ending) return;
         p.move(p.dir * p.speed, 0);
-        const deathY = level.levelHeight() + CONFIG.fallDeathPadding;
-        if (p.pos.y > deathY) destroy(p);
+        if (p.pos.y > worldDeathY) destroy(p);
       });
 
       p.onCollide("solid", (_solid, col) => {
@@ -954,6 +1022,7 @@ export function registerGameScene(ctx) {
         pos(blockPos),
         area(),
         body({ isStatic: true }),
+        perfCull(),
         "solid",
         "hiddenBlock",
       ]);
@@ -1045,6 +1114,37 @@ export function registerGameScene(ctx) {
     let startLocked = true;
     let pauseActive = false;
     let bossPowerDropTimer = rand(5.5, 8.5);
+    const HUD_COLOR_NEUTRAL = rgb(255, 255, 255);
+    const HUD_COLOR_CHARGED = rgb(52, 199, 89);
+    const HUD_COLOR_WINGED = rgb(170, 235, 255);
+    let hudPowerMode = "normal";
+    let auraMode = "none";
+
+    function setHudText(obj, value) {
+      if (obj.text !== value) obj.text = value;
+    }
+
+    function setHudPowerMode(mode) {
+      if (hudPowerMode === mode) return;
+      hudPowerMode = mode;
+      if (mode === "charged") hudPower.color = HUD_COLOR_CHARGED;
+      else if (mode === "winged") hudPower.color = HUD_COLOR_WINGED;
+      else hudPower.color = HUD_COLOR_NEUTRAL;
+    }
+
+    function setAuraMode(mode) {
+      if (auraMode === mode) return;
+      auraMode = mode;
+      if (mode === "charged") {
+        aura.color = HUD_COLOR_CHARGED;
+        aura.outline = { width: 2, color: HUD_COLOR_CHARGED };
+        return;
+      }
+      if (mode === "winged") {
+        aura.color = HUD_COLOR_WINGED;
+        aura.outline = { width: 2, color: HUD_COLOR_WINGED };
+      }
+    }
 
     // Training hints (only on the training level).
     const tutorialSteps = Array.isArray(levelSpec.tutorialSteps)
@@ -1180,7 +1280,9 @@ export function registerGameScene(ctx) {
         const selected = i === pauseSelection;
         pauseOptionTexts[i].color = selected ? rgb(170, 235, 255) : rgb(215, 225, 245);
         pauseOptionTexts[i].opacity = selected ? 1 : 0.88;
-        pauseOptionTexts[i].scale = selected ? vec2(1.05) : vec2(1);
+        const targetScale = selected ? 1.05 : 1;
+        pauseOptionTexts[i].scale.x = targetScale;
+        pauseOptionTexts[i].scale.y = targetScale;
       }
     }
 
@@ -1188,6 +1290,7 @@ export function registerGameScene(ctx) {
       if (!pauseActive) return;
       pauseActive = false;
       setGameplayObjectsPaused(false);
+      updatePerfCullables();
 
       pauseOverlay.hidden = true;
       pausePanel.hidden = true;
@@ -1273,6 +1376,7 @@ export function registerGameScene(ctx) {
     }
 
     updateCamera();
+    updatePerfCullables();
 
     function awardStomp(enemyPos) {
       const now = time();
@@ -1561,45 +1665,62 @@ export function registerGameScene(ctx) {
     });
 
     onUpdate(() => {
+      const frameDt = dt();
+      const now = time();
+
       // HUD.
-      hudScore.text = `SCORE ${run.score}`;
-      hudCoins.text = `x${run.coins}`;
-      hudLives.text = `x${run.lives}`;
-      hudTime.text = `TIME ${Math.max(0, Math.floor(timeLeft)).toString().padStart(3, "0")}`;
+      setHudText(hudScore, `SCORE ${run.score}`);
+      setHudText(hudCoins, `x${run.coins}`);
+      setHudText(hudLives, `x${run.lives}`);
+      setHudText(
+        hudTime,
+        `TIME ${Math.max(0, Math.floor(timeLeft)).toString().padStart(3, "0")}`,
+      );
       let wingActive = run.power === "winged" && run.wingSecondsLeft > 0;
       if (run.power === "charged") {
-        hudPower.text = "POWER CHARGED";
-        hudPower.use(color(52, 199, 89));
+        setHudText(hudPower, "POWER CHARGED");
+        setHudPowerMode("charged");
       } else if (wingActive) {
-        hudPower.text = `POWER WING ${Math.max(0, Math.ceil(run.wingSecondsLeft))}s`;
-        hudPower.use(color(170, 235, 255));
+        setHudText(
+          hudPower,
+          `POWER WING ${Math.max(0, Math.ceil(run.wingSecondsLeft))}s`,
+        );
+        setHudPowerMode("winged");
       } else {
-        hudPower.text = "POWER —";
-        hudPower.use(color(255, 255, 255));
+        setHudText(hudPower, "POWER —");
+        setHudPowerMode("normal");
       }
-      if (pauseActive) hudAudio.text = "PAUSED";
-      else hudAudio.text = settings.audio ? "ESC/P: PAUSE • M: MUTE" : "ESC/P: PAUSE • M: UNMUTE";
+      if (pauseActive) setHudText(hudAudio, "PAUSED");
+      else
+        setHudText(
+          hudAudio,
+          settings.audio ? "ESC/P: PAUSE • M: MUTE" : "ESC/P: PAUSE • M: UNMUTE",
+        );
 
-      aura.pos = player.pos.add(tileSize / 2, tileSize / 2);
+      aura.pos.x = player.pos.x + tileSize * 0.5;
+      aura.pos.y = player.pos.y + tileSize * 0.5;
       if (run.power === "charged") {
-        aura.opacity = 0.2 + Math.sin(time() * 6) * 0.035;
-        const s = 1 + Math.sin(time() * 6) * 0.05;
-        aura.scale = vec2(s);
-        aura.color = rgb(52, 199, 89);
-        aura.outline = { width: 2, color: rgb(52, 199, 89) };
+        setAuraMode("charged");
+        const pulse = Math.sin(now * 6);
+        aura.opacity = 0.2 + pulse * 0.035;
+        const auraScale = 1 + pulse * 0.05;
+        aura.scale.x = auraScale;
+        aura.scale.y = auraScale;
       } else if (wingActive) {
-        aura.opacity = 0.22 + Math.sin(time() * 8) * 0.04;
-        const s = 1 + Math.sin(time() * 8) * 0.06;
-        aura.scale = vec2(s);
-        aura.color = rgb(170, 235, 255);
-        aura.outline = { width: 2, color: rgb(170, 235, 255) };
+        setAuraMode("winged");
+        const pulse = Math.sin(now * 8);
+        aura.opacity = 0.22 + pulse * 0.04;
+        const auraScale = 1 + pulse * 0.06;
+        aura.scale.x = auraScale;
+        aura.scale.y = auraScale;
       } else {
-        aura.opacity = 0.0;
-        aura.scale = vec2(1);
+        aura.opacity = 0;
+        aura.scale.x = 1;
+        aura.scale.y = 1;
       }
 
       if (isInvincible())
-        player.opacity = Math.floor(time() * 18) % 2 === 0 ? 0.25 : 1;
+        player.opacity = Math.floor(now * 18) % 2 === 0 ? 0.25 : 1;
       else player.opacity = 1;
 
       if (tutorialSteps && tutorialText) {
@@ -1619,12 +1740,12 @@ export function registerGameScene(ctx) {
 
       if (ending) return;
 
-      if (player.isGrounded()) lastGroundedAt = time();
+      if (player.isGrounded()) lastGroundedAt = now;
 
       if (startLocked) return;
 
       if (run.power === "winged") {
-        run.wingSecondsLeft = Math.max(0, run.wingSecondsLeft - dt());
+        run.wingSecondsLeft = Math.max(0, run.wingSecondsLeft - frameDt);
         if (run.wingSecondsLeft <= 0) {
           run.power = "normal";
           playSfx("powerdown");
@@ -1637,17 +1758,21 @@ export function registerGameScene(ctx) {
       }
 
       wingActive = run.power === "winged" && run.wingSecondsLeft > 0;
-      const touchingVine = time() < vineTouchUntil;
+      const leftDown = anyInputDown(INPUT.left);
+      const rightDown = anyInputDown(INPUT.right);
+      const runDown = anyInputDown(INPUT.run);
+      const jumpDown = anyInputDown(INPUT.jump);
+      const touchingVine = now < vineTouchUntil;
       const climbUp = anyInputDown(INPUT.up);
       const climbDown = anyInputDown(INPUT.down);
-      const vineReattachLocked = time() < vineDetachUntil;
+      const vineReattachLocked = now < vineDetachUntil;
       if (!touchingVine || vineReattachLocked) climbingVine = false;
       if (!vineReattachLocked && touchingVine && (climbUp || climbDown || climbingVine)) {
         climbingVine = true;
       }
 
       if (isBossLevel) {
-        bossPowerDropTimer -= dt();
+        bossPowerDropTimer -= frameDt;
         if (bossPowerDropTimer <= 0 && get("powerup").length < 2) {
           const centerX = bossFight.boss?.homeX ?? player.pos.x;
           spawnFallingPowerup("battery", centerX + rand(-220, 220));
@@ -1656,46 +1781,45 @@ export function registerGameScene(ctx) {
       }
 
       // Timer.
-      timeLeft -= dt();
+      timeLeft -= frameDt;
       if (timeLeft <= 0) {
         loseLife("time");
         return;
       }
 
       // Movement.
-      const moveDir =
-        (anyInputDown(INPUT.left) ? -1 : 0) + (anyInputDown(INPUT.right) ? 1 : 0);
-      const isRunning = anyInputDown(INPUT.run);
+      const moveDir = (leftDown ? -1 : 0) + (rightDown ? 1 : 0);
+      const isRunning = runDown;
       const maxSpeed = isRunning ? CONFIG.runSpeed : CONFIG.walkSpeed;
       const accel = player.isGrounded() ? CONFIG.accelGround : CONFIG.accelAir;
       const decel = player.isGrounded() ? CONFIG.decelGround : CONFIG.decelAir;
 
       if (moveDir !== 0) {
         facing = moveDir;
-        velX = approach(velX, moveDir * maxSpeed, accel * dt());
+        velX = approach(velX, moveDir * maxSpeed, accel * frameDt);
       } else {
-        velX = approach(velX, 0, decel * dt());
+        velX = approach(velX, 0, decel * frameDt);
       }
 
       // Let players walk off vines naturally instead of getting stuck.
       if (climbingVine && moveDir !== 0) climbingVine = false;
 
       if (climbingVine) {
-        velX = approach(velX, 0, (decel + 420) * dt());
+        velX = approach(velX, 0, (decel + 420) * frameDt);
         player.gravityScale = 0;
         const climbDir = (climbUp ? -1 : 0) + (climbDown ? 1 : 0);
         player.vel.y = approach(
           player.vel.y,
           climbDir * CONFIG.vineClimbSpeed,
-          CONFIG.wingLiftAccel * dt(),
+          CONFIG.wingLiftAccel * frameDt,
         );
       } else if (wingActive) {
         player.gravityScale = CONFIG.wingGravityScale;
-        if (anyInputDown(INPUT.jump) && !climbDown) {
+        if (jumpDown && !climbDown) {
           player.vel.y = approach(
             player.vel.y,
             -CONFIG.wingRiseSpeed,
-            CONFIG.wingLiftAccel * dt(),
+            CONFIG.wingLiftAccel * frameDt,
           );
         } else {
           const wingFallTarget = climbDown
@@ -1705,7 +1829,7 @@ export function registerGameScene(ctx) {
           player.vel.y = approach(
             player.vel.y,
             wingFallTarget,
-            wingFallAccel * dt(),
+            wingFallAccel * frameDt,
           );
         }
       } else {
@@ -1722,6 +1846,7 @@ export function registerGameScene(ctx) {
       }
 
       const camLeftEdge = updateCamera();
+      updatePerfCullables();
       if (player.pos.x < camLeftEdge + 8) {
         player.pos.x = camLeftEdge + 8;
         velX = Math.max(0, velX);
@@ -1737,21 +1862,21 @@ export function registerGameScene(ctx) {
         }
       }
 
-      dustTimer += dt();
+      dustTimer += frameDt;
       if (player.isGrounded() && Math.abs(velX) > 120 && dustTimer > 0.14) {
         dustTimer = 0;
         spawnDust(player.pos.add(tileSize / 2, tileSize));
       }
 
       // Jump buffer + coyote time.
-      const buffered = time() - jumpQueuedAt <= CONFIG.jumpBuffer;
-      const canCoyote = time() - lastGroundedAt <= CONFIG.coyoteTime;
+      const buffered = now - jumpQueuedAt <= CONFIG.jumpBuffer;
+      const canCoyote = now - lastGroundedAt <= CONFIG.coyoteTime;
       const jumpedFromVine = climbingVine;
       if (buffered && (jumpedFromVine || player.isGrounded() || canCoyote)) {
         jumpQueuedAt = -Infinity;
         climbingVine = false;
         if (jumpedFromVine) {
-          vineDetachUntil = time() + CONFIG.vineJumpDetachSeconds;
+          vineDetachUntil = now + CONFIG.vineJumpDetachSeconds;
           const vineJumpDir = moveDir !== 0 ? moveDir : facing;
           velX = vineJumpDir * Math.max(Math.abs(velX), CONFIG.walkSpeed * 0.55);
         }
@@ -1761,8 +1886,7 @@ export function registerGameScene(ctx) {
       }
 
       // Death by falling.
-      const deathY = level.levelHeight() + CONFIG.fallDeathPadding;
-      if (player.pos.y > deathY) loseLife("pit");
+      if (player.pos.y > worldDeathY) loseLife("pit");
     });
 
     // Collectables.
@@ -1865,11 +1989,14 @@ export function registerGameScene(ctx) {
       }
     });
 
+    const solidQueryTile = vec2(0, 0);
     function hasSolidTileAt(tileX, tileY) {
       if (tileX < 0 || tileY < 0) return false;
       if (tileX >= level.numColumns() || tileY >= level.numRows()) return false;
+      solidQueryTile.x = tileX;
+      solidQueryTile.y = tileY;
       return level
-        .getAt(vec2(tileX, tileY))
+        .getAt(solidQueryTile)
         .some((obj) => obj.is("solid") && obj.solidEnabled !== false);
     }
 
@@ -1878,6 +2005,7 @@ export function registerGameScene(ctx) {
       if (enemy.is("flyingEnemy")) {
         continue;
       }
+      enemy.edgeCheckCooldown = 0;
 
       enemy.onCollide("solid", (_solid, col) => {
         if (ending) return;
@@ -1893,12 +2021,15 @@ export function registerGameScene(ctx) {
         enemy.vel.x = enemy.dir * enemy.speed;
 
         // Turn around at cliffs before stepping into empty space.
-        if (enemy.isGrounded()) {
+        enemy.edgeCheckCooldown -= dt();
+        if (enemy.isGrounded() && enemy.edgeCheckCooldown <= 0) {
+          enemy.edgeCheckCooldown = 0.06;
           const aheadX =
             enemy.dir > 0 ? enemy.pos.x + tileSize + 1 : enemy.pos.x - 1;
           const feetY = enemy.pos.y + tileSize + 1;
-          const aheadTile = level.pos2Tile(vec2(aheadX, feetY));
-          const groundAhead = hasSolidTileAt(aheadTile.x, aheadTile.y);
+          const aheadTileX = Math.floor(aheadX / tileSize);
+          const aheadTileY = Math.floor(feetY / tileSize);
+          const groundAhead = hasSolidTileAt(aheadTileX, aheadTileY);
           if (!groundAhead) {
             enemy.dir *= -1;
             enemy.vel.x = enemy.dir * enemy.speed;
@@ -1906,8 +2037,7 @@ export function registerGameScene(ctx) {
         }
 
         enemy.flipX = enemy.dir > 0;
-        const deathY = level.levelHeight() + CONFIG.fallDeathPadding;
-        if (enemy.pos.y > deathY) destroy(enemy);
+        if (enemy.pos.y > worldDeathY) destroy(enemy);
       });
     }
 
@@ -2350,11 +2480,12 @@ export function registerGameScene(ctx) {
     let door = null;
     if (goalPoleTile) {
       const poleTopPos = level.tile2Pos(goalPoleTile);
-      pole = add([sprite("pole"), pos(poleTopPos), area(), "goalPole"]);
+      pole = add([sprite("pole"), pos(poleTopPos), area(), perfCull(), "goalPole"]);
       flag = add([
         sprite("flag-robot"),
         pos(poleTopPos.add(18, 26)),
         area(),
+        perfCull(),
         "flag",
       ]);
     }
@@ -2367,6 +2498,7 @@ export function registerGameScene(ctx) {
           scale: vec2(0.68, 0.9),
           offset: vec2(5.1, 2.4),
         }),
+        perfCull(),
         "goalDoor",
       ]);
       door.onUpdate(() => {

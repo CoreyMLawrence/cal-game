@@ -78,6 +78,9 @@ export function createGameCore() {
     width: CONFIG.gameWidth,
     height: CONFIG.gameHeight,
     crisp: true,
+    pixelDensity: 1,
+    maxFPS: 60,
+    debug: false,
     background: [135, 206, 235],
   });
 
