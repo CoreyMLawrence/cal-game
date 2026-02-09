@@ -630,59 +630,9 @@ export function registerGameScene(ctx) {
       backdrop.add([
         rect(levelW + 400, height() + 20),
         pos(-200, -10),
-        color(levelTheme.skyBottom.r, levelTheme.skyBottom.g, levelTheme.skyBottom.b),
+        color(levelTheme.skyTop.r, levelTheme.skyTop.g, levelTheme.skyTop.b),
         opacity(1),
       ]);
-
-      backdrop.add([
-        circle(42),
-        pos(180, 84),
-        color(255, 248, 194),
-        opacity(0.74),
-      ]);
-
-      for (let x = -120; x < levelW + 320; x += 178) {
-        const y = 72 + Math.sin(x * 0.014) * 18;
-        backdrop.add([
-          rect(116, 24, { radius: 14 }),
-          pos(x, y),
-          color(255, 255, 255),
-          opacity(0.44),
-        ]);
-        backdrop.add([
-          rect(78, 18, { radius: 10 }),
-          pos(x + 18, y - 12),
-          color(255, 255, 255),
-          opacity(0.52),
-        ]);
-      }
-
-      const cloudIslandLayer = add([pos(0, 0), z(-222)]);
-      for (let x = -80; x < levelW + 260; x += 124) {
-        const y = 356 + Math.sin(x * 0.02) * 5;
-        cloudIslandLayer.add([
-          rect(108, 22, { radius: 10 }),
-          pos(x, y),
-          color(252, 252, 255),
-          opacity(0.88),
-        ]);
-        cloudIslandLayer.add([
-          rect(82, 12, { radius: 6 }),
-          pos(x + 13, y + 18),
-          color(214, 234, 255),
-          opacity(0.8),
-        ]);
-      }
-
-      const vineLayer = add([pos(0, 0), z(-221)]);
-      for (let x = 120; x < levelW + 180; x += 220) {
-        vineLayer.add([
-          rect(4, 104),
-          pos(x, 260),
-          color(74, 170, 92),
-          opacity(0.35),
-        ]);
-      }
     }
 
     function addCastleLevelBackdrop({ includeEmbers = true } = {}) {
@@ -1332,13 +1282,24 @@ export function registerGameScene(ctx) {
     }
 
     function squashEnemy(enemy) {
+      if (!enemy || !enemy.exists()) return;
+      if (enemy.defeated) return;
+      enemy.defeated = true;
+
       playSfx("stomp");
       shake(3);
       awardStomp(enemy.pos.add(tileSize / 2, tileSize / 2));
+
+      // Keep area() intact during collision processing to avoid kaboom
+      // iterating a partially-mutated collider in the same frame.
+      enemy.unuse("enemy");
+      enemy.unuse("danger");
+      enemy.unuse("flyingEnemy");
+      enemy.paused = true;
       enemy.use(scale(1, 0.25));
-      enemy.unuse("body");
-      enemy.unuse("area");
-      wait(0.18, () => destroy(enemy));
+      wait(0.18, () => {
+        if (enemy.exists()) destroy(enemy);
+      });
     }
 
     function buildLevelClearPayload({ goalBonus = 0, bonusLabel = "Flag Bonus" } = {}) {

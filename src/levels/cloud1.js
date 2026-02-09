@@ -37,7 +37,8 @@ export function buildCloud1Level() {
     { start: 202, width: 5 },
   ];
   for (const pit of pits) {
-    for (let x = pit.start; x < pit.start + pit.width; x++) put(x, groundY, " ");
+    for (let x = pit.start; x < pit.start + pit.width; x++)
+      put(x, groundY, " ");
   }
 
   // Spawn and early tools.
@@ -134,7 +135,7 @@ export function buildCloud1Level() {
   coinLine(180, 224, 7, 2);
 
   // Goal.
-  put(cols - 6, 7, "!");
+  put(cols - 6, 11, "!");
   put(cols - 14, 4, "U");
 
   // Enemy placements: red robots are aerial in cloud levels.
@@ -153,7 +154,7 @@ export function buildCloud1Level() {
     [107, 10, "b"],
     [155, 9, "p"],
     [192, 9, "b"],
-    [224, 8, "p"],
+    [218, 8, "p"],
   ];
   for (const [x, y, kind] of enemies) put(x, y, kind);
 

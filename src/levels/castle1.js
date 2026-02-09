@@ -106,7 +106,7 @@ export function buildCastle1Level() {
   put(cols - 17, 9, "F");
 
   // End door (replaces flag for this castle finale).
-  put(cols - 6, 10, "D");
+  put(cols - 6, rows - 2, "D");
 
   return toMap();
 }
