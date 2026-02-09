@@ -340,8 +340,8 @@ export function registerGameScene(ctx) {
         return [
           sprite(spriteName),
           area({
-            scale: vec2(0.74, 0.74),
-            offset: vec2(4.2, 6.6),
+            scale: vec2(0.72, 0.72),
+            offset: vec2(4.5, 8.3),
           }),
           "enemy",
           "danger",
@@ -369,10 +369,10 @@ export function registerGameScene(ctx) {
       }
       return [
         sprite(spriteName),
-        // Slightly tighter hurtbox so contact matches visible robot pixels.
+        // Keep damage contact slightly inset from robot art to avoid "ghost" hits.
         area({
-          scale: vec2(0.78, 0.8),
-          offset: vec2(3.5, 6.4),
+          scale: vec2(0.72, 0.72),
+          offset: vec2(4.5, 8.3),
         }),
         body(),
         "enemy",
@@ -699,7 +699,11 @@ export function registerGameScene(ctx) {
     const player = add([
       sprite("cal"),
       pos(playerStartPos),
-      area(),
+      // Cal art occupies only part of the 32x32 tile, so keep collider tight.
+      area({
+        scale: vec2(0.52, 0.7),
+        offset: vec2(7.7, 5.4),
+      }),
       body(),
       opacity(1),
       "player",
@@ -2152,8 +2156,8 @@ export function registerGameScene(ctx) {
         sprite("ufo-boss"),
         pos(bossPos),
         area({
-          scale: vec2(0.86, 0.74),
-          offset: vec2(2.2, 6.8),
+          scale: vec2(0.78, 0.62),
+          offset: vec2(7.0, 10.8),
         }),
         color(255, 255, 255),
         "boss",
