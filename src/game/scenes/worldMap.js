@@ -39,7 +39,12 @@ export function registerWorldMapScene(ctx) {
     if (worldMapLabel) worldMapLabel.textContent = `World Map: ${world.title}`;
 
     ensureAudioReady();
-    const worldMapTrack = theme.id === "space" ? "overworld-space" : "overworld";
+    const worldMapTrack =
+      theme.id === "space"
+        ? "overworld-space"
+        : theme.id === "desert"
+          ? "overworld-desert"
+          : "overworld";
     bgm.requestTrack(worldMapTrack);
 
     function getNode(levelId) {

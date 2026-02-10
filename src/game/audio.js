@@ -643,6 +643,42 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     return midi;
   }
 
+  function toDesertColor(midi) {
+    if (midi == null) return N;
+    const pc = ((midi % 12) + 12) % 12;
+    // Hijaz/Phrygian-dominant leaning against C: D->Db, A->Ab, B->Bb.
+    if (pc === 2 || pc === 9 || pc === 11) return midi - 1;
+    return midi;
+  }
+
+  function toDesertHarmony(midi, stepIndex) {
+    if (midi == null) return N;
+    const note = toDesertColor(midi);
+    const beatStep = stepIndex % 8;
+    // Sparse high drone tones to emulate sustained regional accompaniment.
+    if (beatStep === 0) return note + 12;
+    if (beatStep === 4) return note + 7;
+    return N;
+  }
+
+  function toDesertBass(midi, stepIndex) {
+    if (midi == null) return N;
+    const beatStep = stepIndex % 8;
+    // Strong "dum" on beats 1 and 3 with room between hits.
+    if (beatStep === 0 || beatStep === 4) return toDesertColor(midi);
+    return N;
+  }
+
+  function toDesertArp(midi, stepIndex) {
+    if (midi == null) return N;
+    const beatStep = stepIndex % 8;
+    const note = toDesertColor(midi);
+    // Short ornamental answers between drum accents.
+    if (beatStep === 1 || beatStep === 5) return note;
+    if (beatStep === 2 || beatStep === 6) return note + 7;
+    return N;
+  }
+
   function toSpaceColor(midi) {
     if (midi == null) return N;
     const pc = ((midi % 12) + 12) % 12;
@@ -711,6 +747,27 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       accentStrength: 0.32,
       groove: "tense",
     }),
+    "overworld-desert": Object.freeze({
+      bpm: 160,
+      stepsPerBeat: BGM_TRACKS.overworld.stepsPerBeat,
+      melody: BGM_TRACKS.overworld.melody.map((m) => toDesertColor(m)),
+      harmony: BGM_TRACKS.overworld.harmony.map((m, i) => toDesertHarmony(m, i)),
+      bass: BGM_TRACKS.overworld.bass.map((m, i) => toDesertBass(m, i)),
+      arp: BGM_TRACKS.overworld.arp.map((m, i) => toDesertArp(m, i)),
+      melodyType: "sawtooth",
+      harmonyType: "triangle",
+      bassType: "square",
+      arpType: "triangle",
+      melodyGain: 0.031,
+      harmonyGain: 0.009,
+      bassGain: 0.021,
+      arpGain: 0.0058,
+      durFactor: 0.9,
+      arpDurFactor: 0.48,
+      accentStrength: 0.58,
+      groove: "desert",
+      trackGain: 1.15,
+    }),
     "overworld-space": Object.freeze({
       bpm: 154,
       stepsPerBeat: BGM_TRACKS.overworld.stepsPerBeat,
@@ -730,6 +787,7 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       arpDurFactor: 0.74,
       accentStrength: 0.22,
       groove: "space",
+      trackGain: 1.2,
     }),
   });
 
@@ -904,27 +962,28 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
         const rawAccent = beatStep === 0 ? 1.18 : beatStep === 4 ? 1.08 : 1.0;
         const accentStrength = track.accentStrength ?? 1.0;
         const accent = 1 + (rawAccent - 1) * accentStrength;
+        const trackGain = track.trackGain ?? 1.0;
 
         scheduleOsc({
           type: track.melodyType ?? "square",
           midi: track.melody[i],
           time: t,
           dur,
-          gain: (track.melodyGain ?? 0.03) * accent,
+          gain: (track.melodyGain ?? 0.03) * accent * trackGain,
         });
         scheduleOsc({
           type: track.harmonyType ?? "square",
           midi: track.harmony[i],
           time: t,
           dur,
-          gain: track.harmonyGain ?? 0.011,
+          gain: (track.harmonyGain ?? 0.011) * trackGain,
         });
         scheduleOsc({
           type: track.bassType ?? "triangle",
           midi: track.bass[i],
           time: t,
           dur,
-          gain: track.bassGain ?? 0.02,
+          gain: (track.bassGain ?? 0.02) * trackGain,
         });
         if (track.arp) {
           scheduleOsc({
@@ -932,25 +991,47 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
             midi: track.arp[i],
             time: t,
             dur: stepDur * (track.arpDurFactor ?? 0.55),
-            gain: track.arpGain ?? 0.007,
+            gain: (track.arpGain ?? 0.007) * trackGain,
           });
         }
 
         if (track.groove === "tense") {
           // Sparse, suspenseful pulse for castle variation.
-          if (beatStep === 0 || beatStep === 5) scheduleKick(t, 0.021);
-          if (beatStep === 4) scheduleSnare(t, 0.012);
-          if (beatStep % 2 === 1) scheduleHat(t, beatStep === 7 ? 0.005 : 0.0036);
+          if (beatStep === 0 || beatStep === 5) scheduleKick(t, 0.021 * trackGain);
+          if (beatStep === 4) scheduleSnare(t, 0.012 * trackGain);
+          if (beatStep % 2 === 1) {
+            scheduleHat(t, (beatStep === 7 ? 0.005 : 0.0036) * trackGain);
+          }
+        } else if (track.groove === "desert") {
+          // Maqsum-inspired pattern: strong lows with syncopated high taps.
+          if (beatStep === 0) scheduleKick(t, 0.027 * trackGain);
+          if (beatStep === 4) scheduleKick(t, 0.022 * trackGain);
+          if (beatStep === 1 || beatStep === 3 || beatStep === 6) {
+            scheduleSnare(t, (beatStep === 3 ? 0.015 : 0.012) * trackGain);
+          }
+          if (beatStep % 2 === 1) {
+            scheduleHat(t, (beatStep === 3 ? 0.0048 : 0.0038) * trackGain);
+          }
+          if (beatStep === 0 || beatStep === 4) {
+            scheduleNoise({
+              time: t,
+              dur: stepDur * 1.8,
+              gain: 0.0017 * trackGain,
+              type: "bandpass",
+              freq: 980,
+              q: 0.7,
+            });
+          }
         } else if (track.groove === "space") {
           // Light pulse with gentle air swells for moon/space levels.
-          if (beatStep === 0) scheduleKick(t, 0.0165);
-          if (beatStep === 4) scheduleSnare(t, 0.0095);
-          if (beatStep === 3 || beatStep === 7) scheduleHat(t, 0.0033);
+          if (beatStep === 0) scheduleKick(t, 0.0165 * trackGain);
+          if (beatStep === 4) scheduleSnare(t, 0.0095 * trackGain);
+          if (beatStep === 3 || beatStep === 7) scheduleHat(t, 0.0033 * trackGain);
           if (beatStep === 0) {
             scheduleNoise({
               time: t,
               dur: stepDur * 2.4,
-              gain: 0.0024,
+              gain: 0.0024 * trackGain,
               type: "bandpass",
               freq: 2200,
               q: 0.55,
@@ -958,9 +1039,9 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
           }
         } else {
           // Classic platformer groove: kick on 1/3, snare on 2/4, hats on 8ths.
-          if (beatStep === 0 || beatStep === 4) scheduleKick(t);
-          if (beatStep === 2 || beatStep === 6) scheduleSnare(t);
-          scheduleHat(t, beatStep % 2 === 1 ? 0.007 : 0.0055);
+          if (beatStep === 0 || beatStep === 4) scheduleKick(t, 0.026 * trackGain);
+          if (beatStep === 2 || beatStep === 6) scheduleSnare(t, 0.018 * trackGain);
+          scheduleHat(t, (beatStep % 2 === 1 ? 0.007 : 0.0055) * trackGain);
         }
 
         step += 1;

@@ -488,7 +488,7 @@ export function createGameCore() {
       buildMap: buildDesert1Level,
       timeLimit: CONFIG.timeLimit + 25,
       nextLevelId: "cloud1",
-      music: "overworld",
+      music: "overworld-desert",
       tutorialSteps: null,
     },
     cloud1: {
