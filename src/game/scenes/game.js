@@ -144,6 +144,7 @@ export function registerGameScene(ctx) {
           obj.pos.x <= right + margin &&
           obj.pos.y >= top - margin &&
           obj.pos.y <= bottom + margin;
+        const keepCollisionsActive = typeof obj.is === "function" && obj.is("solid");
 
         if (inViewBand) {
           if (!obj.culledByPerf) continue;
@@ -155,7 +156,8 @@ export function registerGameScene(ctx) {
 
         if (obj.culledByPerf) continue;
         obj.culledByPerf = true;
-        obj.paused = true;
+        if (!keepCollisionsActive) obj.paused = true;
+        else obj.paused = false;
         if (obj.hideWhenCulled) obj.hidden = true;
       }
     }
@@ -1431,6 +1433,7 @@ export function registerGameScene(ctx) {
 
     function isSolidCollider(obj, { allowCloudSemi = true } = {}) {
       if (!obj || typeof obj.is !== "function") return false;
+      if (typeof obj.exists === "function" && !obj.exists()) return false;
       if (!obj.is("solid") || obj.solidEnabled === false) return false;
       if (!allowCloudSemi && obj.is("cloudSemi")) return false;
       return true;
@@ -1701,6 +1704,17 @@ export function registerGameScene(ctx) {
       return best.obj;
     }
 
+    function triggerSpringBounce(spring) {
+      if (!spring || !spring.exists()) return;
+      playSfx("spring");
+      shake(4);
+      spring.use(scale(1, 0.85));
+      wait(0.08, () => {
+        if (spring.exists()) spring.use(scale(1, 1));
+      });
+      player.jump(CONFIG.jumpForce * 1.35);
+    }
+
     function movePlayerKinematic(totalDx, totalDy) {
       const distance = Math.max(Math.abs(totalDx), Math.abs(totalDy));
       const steps = Math.max(1, Math.ceil(distance / PLAYER_MOVE_SUBSTEP));
@@ -1724,6 +1738,10 @@ export function registerGameScene(ctx) {
       }
 
       if (landedObj) {
+        if (landedObj.is("spring")) {
+          triggerSpringBounce(landedObj);
+          return;
+        }
         if (landedObj.is("fragileCloud") && typeof landedObj.triggerCollapse === "function") {
           landedObj.triggerCollapse();
         }
@@ -1731,6 +1749,38 @@ export function registerGameScene(ctx) {
       } else {
         clearGroundedState();
       }
+    }
+
+    function placePlayerOnSpawnGround() {
+      const box = playerBoxAt();
+      const sampleXs = [box.left + 1, (box.left + box.right) * 0.5, box.right - 1];
+      const startTileY = Math.floor((box.bottom + PLAYER_SOLID_EPSILON) / tileSize);
+      let best = null;
+
+      for (const sampleX of sampleXs) {
+        const tileX = Math.floor(sampleX / tileSize);
+        for (let tileY = startTileY; tileY < level.numRows(); tileY++) {
+          const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
+          for (const solid of solids) {
+            const solidBox = solidBounds(solid, tileX, tileY);
+            if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
+            if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
+            if (solidBox.top + PLAYER_SOLID_EPSILON < box.bottom) continue;
+            if (!best || solidBox.top < best.top) best = { top: solidBox.top, obj: solid };
+          }
+          if (best) break;
+        }
+      }
+
+      if (!best) return;
+      player.pos.y =
+        best.top - (playerHitbox.offsetY + playerHitbox.height) - PLAYER_SOLID_EPSILON;
+      player.vel.y = 0;
+      playerGrounded = true;
+      playerGroundObject = best.obj;
+      playerGroundObjectPos =
+        best.obj && best.obj.exists() && best.obj.pos ? best.obj.pos.clone() : null;
+      lastGroundedAt = time();
     }
 
     // HUD.
@@ -1856,6 +1906,8 @@ export function registerGameScene(ctx) {
         z(5201),
       ]);
     }
+
+    placePlayerOnSpawnGround();
 
     const startOverlay = add([
       text(`${levelSpec.title}\nREADY!\n\nLives: ${run.lives}`, {
@@ -2635,19 +2687,6 @@ export function registerGameScene(ctx) {
       if (typeof fragile.triggerCollapse === "function") fragile.triggerCollapse();
     });
 
-    // Spring bounce.
-    player.onCollide("spring", (spring, col) => {
-      if (ending) return;
-      if (!col) return;
-      if (col.isBottom() && player.isFalling()) {
-        playSfx("spring");
-        shake(4);
-        spring.use(scale(1, 0.85));
-        wait(0.08, () => spring.use(scale(1, 1)));
-        player.jump(CONFIG.jumpForce * 1.35);
-      }
-    });
-
     // Question blocks + bricks (headbutt).
     player.onHeadbutt((obj) => {
       handlePlayerHeadbutt(obj);
@@ -2661,7 +2700,14 @@ export function registerGameScene(ctx) {
       solidQueryTile.y = tileY;
       return level
         .getAt(solidQueryTile)
-        .some((obj) => obj.is("solid") && obj.solidEnabled !== false);
+        .some(
+          (obj) =>
+            !!obj &&
+            (typeof obj.exists !== "function" || obj.exists()) &&
+            typeof obj.is === "function" &&
+            obj.is("solid") &&
+            obj.solidEnabled !== false,
+        );
     }
 
     // Enemy patrol + cliff-safe walking.
