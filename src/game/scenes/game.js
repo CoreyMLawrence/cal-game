@@ -1752,35 +1752,58 @@ export function registerGameScene(ctx) {
     }
 
     function placePlayerOnSpawnGround() {
-      const box = playerBoxAt();
-      const sampleXs = [box.left + 1, (box.left + box.right) * 0.5, box.right - 1];
-      const startTileY = Math.floor((box.bottom + PLAYER_SOLID_EPSILON) / tileSize);
-      let best = null;
+      const spawnTileX = Math.floor(playerSpawnTile.x);
+      const groundRowY = mapGroundY;
+      const spawnTilePos = level.tile2Pos(vec2(spawnTileX, groundRowY));
+      const rowSolids = solidObjectsAtTile(spawnTileX, groundRowY, { allowCloudSemi: true });
 
-      for (const sampleX of sampleXs) {
-        const tileX = Math.floor(sampleX / tileSize);
-        for (let tileY = startTileY; tileY < level.numRows(); tileY++) {
-          const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
-          for (const solid of solids) {
-            const solidBox = solidBounds(solid, tileX, tileY);
-            if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
-            if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
-            if (solidBox.top + PLAYER_SOLID_EPSILON < box.bottom) continue;
-            if (!best || solidBox.top < best.top) best = { top: solidBox.top, obj: solid };
-          }
-          if (best) break;
-        }
+      player.pos.x = spawnTilePos.x;
+
+      if (rowSolids.length > 0) {
+        player.pos.y =
+          spawnTilePos.y - (playerHitbox.offsetY + playerHitbox.height) - PLAYER_SOLID_EPSILON;
+        player.vel.y = 0;
+        playerGrounded = true;
+        playerGroundObject = rowSolids[0];
+        playerGroundObjectPos =
+          rowSolids[0] && rowSolids[0].exists() && rowSolids[0].pos
+            ? rowSolids[0].pos.clone()
+            : null;
+        lastGroundedAt = time();
+        return;
       }
 
-      if (!best) return;
-      player.pos.y =
-        best.top - (playerHitbox.offsetY + playerHitbox.height) - PLAYER_SOLID_EPSILON;
-      player.vel.y = 0;
-      playerGrounded = true;
-      playerGroundObject = best.obj;
-      playerGroundObjectPos =
-        best.obj && best.obj.exists() && best.obj.pos ? best.obj.pos.clone() : null;
-      lastGroundedAt = time();
+      // Rare fallback for maps where spawn column has no base ground.
+      {
+        const box = playerBoxAt();
+        const sampleXs = [box.left + 1, (box.left + box.right) * 0.5, box.right - 1];
+        const startTileY = Math.floor((box.bottom + PLAYER_SOLID_EPSILON) / tileSize);
+        let best = null;
+
+        for (const sampleX of sampleXs) {
+          const tileX = Math.floor(sampleX / tileSize);
+          for (let tileY = startTileY; tileY < level.numRows(); tileY++) {
+            const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
+            for (const solid of solids) {
+              const solidBox = solidBounds(solid, tileX, tileY);
+              if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
+              if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
+              if (solidBox.top + PLAYER_SOLID_EPSILON < box.bottom) continue;
+              if (!best || solidBox.top < best.top) best = { top: solidBox.top, obj: solid };
+            }
+            if (best) break;
+          }
+        }
+        if (!best) return;
+        player.pos.y =
+          best.top - (playerHitbox.offsetY + playerHitbox.height) - PLAYER_SOLID_EPSILON;
+        player.vel.y = 0;
+        playerGrounded = true;
+        playerGroundObject = best.obj;
+        playerGroundObjectPos =
+          best.obj && best.obj.exists() && best.obj.pos ? best.obj.pos.clone() : null;
+        lastGroundedAt = time();
+      }
     }
 
     // HUD.
