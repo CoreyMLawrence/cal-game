@@ -1,6 +1,6 @@
 export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
   const MASTER_ON_GAIN = 1.0;
-  const BGM_BUS_GAIN = 0.27;
+  const BGM_BUS_GAIN = 0.48;
   const SFX_BUS_GAIN = 0.75;
 
   const audioBus = (() => {
@@ -859,16 +859,31 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     const ctx = audioBus.ctx;
     const out = audioBus.bgm;
     const baseGain = out.gain.value;
+    const TRACK_SWITCH_CROSSFADE_SECONDS = 0.25;
 
     let desiredTrack = null;
-    let playingTrack = null;
-    let intervalId = null;
-    let nextStepTime = 0;
-    let step = 0;
+    let activeLayerIndex = -1;
 
     const lookaheadMs = 25;
     const scheduleAhead = 0.35;
     const scheduleSafety = 0.012;
+
+    function createLayer() {
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = 0;
+      gainNode.connect(out);
+      return {
+        gainNode,
+        intervalId: null,
+        stopTimeoutId: null,
+        trackName: null,
+        nextStepTime: 0,
+        step: 0,
+        token: 0,
+      };
+    }
+
+    const layers = [createLayer(), createLayer()];
 
     function getTrack(trackName) {
       if (!trackName) return null;
@@ -893,7 +908,15 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       return { start, end: start + duration };
     }
 
-    function scheduleOsc({ type, midi, time, dur, gain, freqEnd = null }) {
+    function scheduleOsc({
+      type,
+      midi,
+      time,
+      dur,
+      gain,
+      destination,
+      freqEnd = null,
+    }) {
       if (!settings.audio) return;
       if (midi == null) return;
 
@@ -920,7 +943,7 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       amp.gain.exponentialRampToValueAtTime(SILENT_GAIN, end);
 
       osc.connect(amp);
-      amp.connect(out);
+      amp.connect(destination ?? out);
       osc.start(start);
       osc.stop(end + 0.03);
     }
@@ -932,6 +955,7 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       type = "highpass",
       freq = 6500,
       q = 0.9,
+      destination,
     }) {
       const { start, end } = sanitizeStart(time, dur);
       const attack = Math.min(0.008, Math.max(0.003, (end - start) * 0.3));
@@ -954,13 +978,13 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
 
       src.connect(filter);
       filter.connect(amp);
-      amp.connect(out);
+      amp.connect(destination ?? out);
 
       src.start(start);
       src.stop(end + 0.03);
     }
 
-    function scheduleKick(time, gain = 0.026) {
+    function scheduleKick(time, gain = 0.026, destination = out) {
       // Tiny 8-bit “kick” thump.
       const { start, end } = sanitizeStart(time, 0.075);
       const osc = ctx.createOscillator();
@@ -972,12 +996,12 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       amp.gain.exponentialRampToValueAtTime(Math.max(SILENT_GAIN, gain), start + 0.008);
       amp.gain.exponentialRampToValueAtTime(SILENT_GAIN, end);
       osc.connect(amp);
-      amp.connect(out);
+      amp.connect(destination);
       osc.start(start);
       osc.stop(end + 0.02);
     }
 
-    function scheduleSnare(time, gain = 0.018) {
+    function scheduleSnare(time, gain = 0.018, destination = out) {
       scheduleNoise({
         time,
         dur: 0.095,
@@ -985,10 +1009,11 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
         type: "bandpass",
         freq: 1800,
         q: 0.7,
+        destination,
       });
     }
 
-    function scheduleHat(time, gain = 0.006) {
+    function scheduleHat(time, gain = 0.006, destination = out) {
       scheduleNoise({
         time,
         dur: 0.03,
@@ -996,31 +1021,132 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
         type: "highpass",
         freq: 7600,
         q: 0.9,
+        destination,
       });
     }
 
-    function schedulerTick() {
-      if (!settings.audio) return;
-      if (!playingTrack) return;
+    function resetLayerState(layer) {
+      layer.trackName = null;
+      layer.step = 0;
+      layer.nextStepTime = 0;
+    }
 
-      const track = getTrack(playingTrack);
+    function stopLayerImmediately(layer) {
+      if (layer.intervalId) {
+        clearInterval(layer.intervalId);
+        layer.intervalId = null;
+      }
+      if (layer.stopTimeoutId) {
+        clearTimeout(layer.stopTimeoutId);
+        layer.stopTimeoutId = null;
+      }
+      layer.token += 1;
+      const now = ctx.currentTime;
+      holdParamAtTime(layer.gainNode.gain, now);
+      layer.gainNode.gain.setValueAtTime(0, now);
+      resetLayerState(layer);
+    }
+
+    function stopLayer(layer, fadeSeconds = 0.12) {
+      if (!layer.trackName && !layer.intervalId && !layer.stopTimeoutId) return;
+      if (layer.stopTimeoutId) {
+        clearTimeout(layer.stopTimeoutId);
+        layer.stopTimeoutId = null;
+      }
+      if (layer.intervalId) {
+        clearInterval(layer.intervalId);
+        layer.intervalId = null;
+      }
+
+      layer.token += 1;
+      const tokenAtStop = layer.token;
+      const now = ctx.currentTime;
+      const fade = Math.max(0.02, fadeSeconds);
+      holdParamAtTime(layer.gainNode.gain, now);
+      layer.gainNode.gain.linearRampToValueAtTime(0, now + fade);
+
+      const shutdownDelayMs = Math.ceil((fade + scheduleAhead + 0.05) * 1000);
+      layer.stopTimeoutId = setTimeout(() => {
+        if (layer.token !== tokenAtStop) return;
+        layer.stopTimeoutId = null;
+        const at = ctx.currentTime;
+        holdParamAtTime(layer.gainNode.gain, at);
+        layer.gainNode.gain.setValueAtTime(0, at);
+        resetLayerState(layer);
+      }, shutdownDelayMs);
+    }
+
+    function fadeOutLayer(layer, fadeSeconds = TRACK_SWITCH_CROSSFADE_SECONDS) {
+      if (!layer.trackName && !layer.intervalId) return;
+      if (layer.stopTimeoutId) {
+        clearTimeout(layer.stopTimeoutId);
+        layer.stopTimeoutId = null;
+      }
+
+      const tokenAtFade = layer.token;
+      const now = ctx.currentTime;
+      const fade = Math.max(0.02, fadeSeconds);
+      holdParamAtTime(layer.gainNode.gain, now);
+      layer.gainNode.gain.linearRampToValueAtTime(0, now + fade);
+
+      const shutdownDelayMs = Math.ceil((fade + scheduleAhead + 0.05) * 1000);
+      layer.stopTimeoutId = setTimeout(() => {
+        if (layer.token !== tokenAtFade) return;
+        if (layer.intervalId) {
+          clearInterval(layer.intervalId);
+          layer.intervalId = null;
+        }
+        layer.stopTimeoutId = null;
+        layer.token += 1;
+        const at = ctx.currentTime;
+        holdParamAtTime(layer.gainNode.gain, at);
+        layer.gainNode.gain.setValueAtTime(0, at);
+        resetLayerState(layer);
+      }, shutdownDelayMs);
+    }
+
+    function phaseStepAtTime(layer, time) {
+      const track = getTrack(layer.trackName);
+      if (!track) return 0;
+      const stepDur = stepDurationSeconds(track);
+      const steps = track.melody.length;
+      if (!Number.isFinite(stepDur) || stepDur <= 0 || steps <= 0) return 0;
+      const deltaSteps = Math.floor((time - layer.nextStepTime) / stepDur);
+      const rawStep = layer.step + deltaSteps;
+      return ((rawStep % steps) + steps) % steps;
+    }
+
+    function mapStepAcrossTracks(stepIndex, sourceSteps, targetSteps) {
+      if (!Number.isFinite(stepIndex) || sourceSteps <= 0 || targetSteps <= 0) return 0;
+      const normalizedStep = ((Math.floor(stepIndex) % sourceSteps) + sourceSteps) % sourceSteps;
+      if (sourceSteps === targetSteps) return normalizedStep;
+      const phase = normalizedStep / sourceSteps;
+      return Math.floor(phase * targetSteps) % targetSteps;
+    }
+
+    function schedulerTick(layer) {
+      if (!settings.audio) return;
+      if (!layer.trackName) return;
+
+      const track = getTrack(layer.trackName);
       if (!track) return;
       const stepDur = stepDurationSeconds(track);
       const steps = track.melody.length;
       const scheduleFrom = ctx.currentTime + scheduleSafety;
+      const destination = layer.gainNode;
 
-      if (nextStepTime < scheduleFrom - stepDur) {
-        const skippedSteps = Math.floor((scheduleFrom - nextStepTime) / stepDur);
+      if (layer.nextStepTime < scheduleFrom - stepDur) {
+        const skippedSteps = Math.floor((scheduleFrom - layer.nextStepTime) / stepDur);
         if (skippedSteps > 0) {
-          step += skippedSteps;
-          nextStepTime += skippedSteps * stepDur;
+          layer.step += skippedSteps;
+          layer.nextStepTime += skippedSteps * stepDur;
         }
       }
-      if (nextStepTime < scheduleFrom) nextStepTime = scheduleFrom;
+      if (layer.nextStepTime < scheduleFrom) layer.nextStepTime = scheduleFrom;
 
-      while (nextStepTime < ctx.currentTime + scheduleAhead) {
-        const i = step % steps;
-        const t = nextStepTime;
+      while (layer.nextStepTime < ctx.currentTime + scheduleAhead) {
+        const i = layer.step % steps;
+        const t = layer.nextStepTime;
         const dur = stepDur * (track.durFactor ?? 0.92);
         const beatStep = i % 8;
         const rawAccent = beatStep === 0 ? 1.18 : beatStep === 4 ? 1.08 : 1.0;
@@ -1034,6 +1160,7 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
           time: t,
           dur,
           gain: (track.melodyGain ?? 0.03) * accent * trackGain,
+          destination,
         });
         scheduleOsc({
           type: track.harmonyType ?? "square",
@@ -1041,6 +1168,7 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
           time: t,
           dur,
           gain: (track.harmonyGain ?? 0.011) * trackGain,
+          destination,
         });
         scheduleOsc({
           type: track.bassType ?? "triangle",
@@ -1048,6 +1176,7 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
           time: t,
           dur,
           gain: (track.bassGain ?? 0.02) * trackGain,
+          destination,
         });
         if (track.arp) {
           scheduleOsc({
@@ -1056,21 +1185,23 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
             time: t,
             dur: stepDur * (track.arpDurFactor ?? 0.55),
             gain: (track.arpGain ?? 0.007) * trackGain,
+            destination,
           });
         }
 
         if (track.groove === "tense") {
           // Sparse, suspenseful pulse for castle variation.
-          if (beatStep === 0 || beatStep === 5) scheduleKick(t, 0.021 * trackGain);
-          if (beatStep === 4) scheduleSnare(t, 0.012 * trackGain);
+          if (beatStep === 0 || beatStep === 5)
+            scheduleKick(t, 0.021 * trackGain, destination);
+          if (beatStep === 4) scheduleSnare(t, 0.012 * trackGain, destination);
           if (beatStep % 2 === 1) {
-            scheduleHat(t, (beatStep === 7 ? 0.005 : 0.0036) * trackGain);
+            scheduleHat(t, (beatStep === 7 ? 0.005 : 0.0036) * trackGain, destination);
           }
         } else if (track.groove === "cloud") {
           // Weightless cloud pulse: minimal low-end, soft air swells.
-          if (beatStep === 0) scheduleKick(t, 0.0105 * trackGain);
-          if (beatStep === 4) scheduleKick(t, 0.0075 * trackGain);
-          if (beatStep === 2 || beatStep === 6) scheduleHat(t, 0.0028 * trackGain);
+          if (beatStep === 0) scheduleKick(t, 0.0105 * trackGain, destination);
+          if (beatStep === 4) scheduleKick(t, 0.0075 * trackGain, destination);
+          if (beatStep === 2 || beatStep === 6) scheduleHat(t, 0.0028 * trackGain, destination);
           if (beatStep === 1 || beatStep === 5 || beatStep === 7) {
             scheduleNoise({
               time: t,
@@ -1079,17 +1210,26 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
               type: "highpass",
               freq: 7200,
               q: 0.65,
+              destination,
             });
           }
         } else if (track.groove === "desert") {
           // Maqsum-inspired pattern: strong lows with syncopated high taps.
-          if (beatStep === 0) scheduleKick(t, 0.027 * trackGain);
-          if (beatStep === 4) scheduleKick(t, 0.022 * trackGain);
+          if (beatStep === 0) scheduleKick(t, 0.027 * trackGain, destination);
+          if (beatStep === 4) scheduleKick(t, 0.022 * trackGain, destination);
           if (beatStep === 1 || beatStep === 3 || beatStep === 6) {
-            scheduleSnare(t, (beatStep === 3 ? 0.015 : 0.012) * trackGain);
+            scheduleSnare(
+              t,
+              (beatStep === 3 ? 0.015 : 0.012) * trackGain,
+              destination,
+            );
           }
           if (beatStep % 2 === 1) {
-            scheduleHat(t, (beatStep === 3 ? 0.0048 : 0.0038) * trackGain);
+            scheduleHat(
+              t,
+              (beatStep === 3 ? 0.0048 : 0.0038) * trackGain,
+              destination,
+            );
           }
           if (beatStep === 0 || beatStep === 4) {
             scheduleNoise({
@@ -1099,13 +1239,15 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
               type: "bandpass",
               freq: 980,
               q: 0.7,
+              destination,
             });
           }
         } else if (track.groove === "space") {
           // Light pulse with gentle air swells for moon/space levels.
-          if (beatStep === 0) scheduleKick(t, 0.0165 * trackGain);
-          if (beatStep === 4) scheduleSnare(t, 0.0095 * trackGain);
-          if (beatStep === 3 || beatStep === 7) scheduleHat(t, 0.0033 * trackGain);
+          if (beatStep === 0) scheduleKick(t, 0.0165 * trackGain, destination);
+          if (beatStep === 4) scheduleSnare(t, 0.0095 * trackGain, destination);
+          if (beatStep === 3 || beatStep === 7)
+            scheduleHat(t, 0.0033 * trackGain, destination);
           if (beatStep === 0) {
             scheduleNoise({
               time: t,
@@ -1114,53 +1256,111 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
               type: "bandpass",
               freq: 2200,
               q: 0.55,
+              destination,
             });
           }
         } else {
           // Classic platformer groove: kick on 1/3, snare on 2/4, hats on 8ths.
-          if (beatStep === 0 || beatStep === 4) scheduleKick(t, 0.026 * trackGain);
-          if (beatStep === 2 || beatStep === 6) scheduleSnare(t, 0.018 * trackGain);
-          scheduleHat(t, (beatStep % 2 === 1 ? 0.007 : 0.0055) * trackGain);
+          if (beatStep === 0 || beatStep === 4)
+            scheduleKick(t, 0.026 * trackGain, destination);
+          if (beatStep === 2 || beatStep === 6)
+            scheduleSnare(t, 0.018 * trackGain, destination);
+          scheduleHat(
+            t,
+            (beatStep % 2 === 1 ? 0.007 : 0.0055) * trackGain,
+            destination,
+          );
         }
 
-        step += 1;
-        nextStepTime += stepDur;
+        layer.step += 1;
+        layer.nextStepTime += stepDur;
       }
+    }
+
+    function startLayer(layer, trackName, startStep = 0, fadeInSeconds = 0.12) {
+      const track = getTrack(trackName);
+      if (!track) return false;
+
+      stopLayerImmediately(layer);
+
+      const steps = track.melody.length;
+      const safeStep =
+        steps > 0 ? ((Math.floor(startStep) % steps) + steps) % steps : 0;
+      const now = ctx.currentTime;
+
+      layer.trackName = trackName;
+      layer.step = safeStep;
+      layer.nextStepTime = now + 0.02;
+      layer.token += 1;
+      const token = layer.token;
+
+      layer.gainNode.gain.setValueAtTime(0, now);
+      layer.gainNode.gain.linearRampToValueAtTime(
+        baseGain,
+        now + Math.max(0.02, fadeInSeconds),
+      );
+
+      layer.intervalId = setInterval(() => {
+        if (layer.token !== token) return;
+        schedulerTick(layer);
+      }, lookaheadMs);
+      schedulerTick(layer);
+      return true;
+    }
+
+    function resolveActiveLayer() {
+      if (activeLayerIndex < 0) return null;
+      const layer = layers[activeLayerIndex];
+      if (!layer || !layer.trackName) return null;
+      return layer;
     }
 
     function start(trackName) {
       if (!settings.audio) return;
       if (!trackName) return;
-      if (!getTrack(trackName)) return;
-      if (playingTrack === trackName && intervalId) return;
-      const restartFade = 0.06;
-      stop(restartFade);
+      const track = getTrack(trackName);
+      if (!track) return;
 
-      desiredTrack = trackName;
-      playingTrack = trackName;
-      step = 0;
-      const fadeInAt = ctx.currentTime + restartFade;
-      nextStepTime = fadeInAt + 0.02;
+      const activeLayer = resolveActiveLayer();
+      if (activeLayer?.trackName === trackName && activeLayer.intervalId) return;
 
-      out.gain.setValueAtTime(0, fadeInAt);
-      out.gain.linearRampToValueAtTime(baseGain, fadeInAt + 0.12);
+      if (!activeLayer) {
+        const targetLayer = layers[0];
+        if (startLayer(targetLayer, trackName, 0, 0.12)) {
+          activeLayerIndex = 0;
+        }
+        return;
+      }
 
-      intervalId = setInterval(schedulerTick, lookaheadMs);
-      schedulerTick();
+      const nextIndex = activeLayerIndex === 0 ? 1 : 0;
+      const nextLayer = layers[nextIndex];
+      const targetTime = ctx.currentTime + 0.02;
+      const fromTrack = getTrack(activeLayer.trackName);
+      const sourceStep = phaseStepAtTime(activeLayer, targetTime);
+      const mappedStep = mapStepAcrossTracks(
+        sourceStep,
+        fromTrack?.melody.length ?? 0,
+        track.melody.length,
+      );
+
+      if (
+        startLayer(
+          nextLayer,
+          trackName,
+          mappedStep,
+          TRACK_SWITCH_CROSSFADE_SECONDS,
+        )
+      ) {
+        fadeOutLayer(activeLayer, TRACK_SWITCH_CROSSFADE_SECONDS);
+        activeLayerIndex = nextIndex;
+      }
     }
 
     function stop(fadeSeconds = 0.12) {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
+      for (const layer of layers) {
+        stopLayer(layer, fadeSeconds);
       }
-
-      const now = ctx.currentTime;
-      holdParamAtTime(out.gain, now);
-      out.gain.linearRampToValueAtTime(0, now + Math.max(0.02, fadeSeconds));
-
-      playingTrack = null;
-      step = 0;
+      activeLayerIndex = -1;
     }
 
     function requestTrack(trackName) {
