@@ -1955,6 +1955,10 @@ export function registerGameScene(ctx) {
 
     placePlayerOnSpawnGround();
 
+    // Start level music immediately on scene entry (before READY lock ends).
+    ensureAudioReady();
+    bgm.requestTrack(levelSpec.music ?? null);
+
     const startOverlay = add([
       text(`${levelSpec.title}\nREADY!\n\nLives: ${run.lives}`, {
         size: 30,
@@ -1970,8 +1974,6 @@ export function registerGameScene(ctx) {
       startLocked = false;
       destroy(startOverlay);
       playSfx("ui");
-      ensureAudioReady();
-      bgm.requestTrack(levelSpec.music ?? null);
     });
 
     const pauseOverlay = add([
