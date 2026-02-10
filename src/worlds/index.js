@@ -58,6 +58,24 @@ export function createWorldData({ rgb, vec2 }) {
       levelDot: rgb(116, 201, 255),
       textDark: rgb(29, 66, 92),
     }),
+    space: Object.freeze({
+      id: "space",
+      mapStyle: "space",
+      levelStyle: "space",
+      skyTop: rgb(4, 9, 24),
+      skyBottom: rgb(12, 18, 40),
+      nebulaA: rgb(52, 70, 114),
+      nebulaB: rgb(26, 38, 72),
+      moonSurfaceLight: rgb(156, 164, 178),
+      moonSurfaceDark: rgb(124, 132, 146),
+      pathActive: rgb(222, 235, 255),
+      pathInactive: rgb(102, 116, 148),
+      nodeOutline: rgb(210, 220, 238),
+      nodeShadow: rgb(0, 0, 0),
+      trainingDot: rgb(255, 214, 10),
+      levelDot: rgb(190, 214, 248),
+      textDark: rgb(236, 242, 255),
+    }),
   });
 
   const WORLD_MAPS = Object.freeze({
@@ -147,6 +165,23 @@ export function createWorldData({ rgb, vec2 }) {
           pos: vec2(500, 274),
           requires: ["desert1"],
           dotColor: WORLD_THEMES.cloud.levelDot,
+        }),
+      ]),
+      connections: Object.freeze([]),
+    }),
+    world4: Object.freeze({
+      id: "world4",
+      title: "WORLD 4 — MOON BASE",
+      themeId: "space",
+      startLevelId: "level-4-1",
+      nodes: Object.freeze([
+        Object.freeze({
+          levelId: "level-4-1",
+          label: "1",
+          kind: "level",
+          pos: vec2(500, 292),
+          requires: ["cloud1"],
+          dotColor: WORLD_THEMES.space.levelDot,
         }),
       ]),
       connections: Object.freeze([]),

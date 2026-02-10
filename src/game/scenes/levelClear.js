@@ -1,6 +1,7 @@
 export function registerLevelClearScene(ctx) {
   const {
     registerCommonHotkeys,
+    CONFIG,
     bgm,
     addFadeIn,
     centerBoxText,
@@ -14,6 +15,7 @@ export function registerLevelClearScene(ctx) {
 
   scene("levelClear", (data) => {
     registerCommonHotkeys({ characterId: data?.characterId ?? "cal" });
+    setGravity(CONFIG.gravity);
     bgm.requestTrack(null);
     add([rect(width(), height()), pos(0, 0), color(0, 0, 0), fixed()]);
     addFadeIn();

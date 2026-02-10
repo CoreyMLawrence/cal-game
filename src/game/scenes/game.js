@@ -31,12 +31,19 @@ export function registerGameScene(ctx) {
 
   scene("game", (data) => {
     registerCommonHotkeys({ characterId: data?.characterId ?? "cal" });
-    setGravity(CONFIG.gravity);
     addFadeIn();
 
     const characterId = data?.characterId ?? "cal";
     const levelId = data?.levelId ?? "training";
     const levelSpec = LEVELS[levelId] ?? LEVELS.level1;
+    const forceMoonGravity = levelId === "level-4-1";
+    const sceneGravity =
+      typeof levelSpec.gravity === "number"
+        ? levelSpec.gravity
+        : forceMoonGravity
+          ? CONFIG.gravityMoon
+          : CONFIG.gravity;
+    setGravity(sceneGravity);
     const returnLevelId =
       typeof data?.returnLevelId === "string" ? data.returnLevelId : null;
     const returnWorldId =
@@ -56,6 +63,7 @@ export function registerGameScene(ctx) {
     const isDesertLevel = levelStyle === "desert";
     const isCastleLevel = levelStyle === "castle";
     const isCloudLevel = levelStyle === "cloud";
+    const isSpaceLevel = levelStyle === "space" || forceMoonGravity;
     const isBossLevel = levelSpec.isBossLevel === true;
 
     let playerSpawnTile = vec2(0, 0);
@@ -67,6 +75,19 @@ export function registerGameScene(ctx) {
     const map = levelSpec.buildMap();
     const mapGroundY = map.length - 1;
     const tileSize = CONFIG.tileSize;
+    const airControlMultiplier =
+      typeof levelSpec.airControlMultiplier === "number"
+        ? levelSpec.airControlMultiplier
+        : isSpaceLevel
+          ? CONFIG.moonAirAccelScale
+          : 1;
+    const airBrakeMultiplier =
+      typeof levelSpec.airBrakeMultiplier === "number"
+        ? levelSpec.airBrakeMultiplier
+        : isSpaceLevel
+          ? CONFIG.moonAirDecelScale
+          : 1;
+    const jumpJetFx = levelSpec.jumpJetFx === true || isSpaceLevel;
     const floorSolidDepthRows = 5;
     const groundSpriteName = isCastleLevel
       ? "ground-castle"
@@ -141,17 +162,75 @@ export function registerGameScene(ctx) {
     }
 
     function tileTintFor(spriteName) {
+      if (isSpaceLevel) {
+        if (spriteName === "spring") return rgb(178, 182, 190);
+        if (
+          spriteName === "ground" ||
+          spriteName === "block" ||
+          spriteName === "ground-cloud"
+        )
+          return rgb(148, 152, 160);
+        return null;
+      }
       if (!isDesertLevel) return null;
       if (spriteName === "block") return rgb(216, 172, 110);
       if (spriteName === "spring") return rgb(226, 194, 132);
       return null;
     }
 
+    function moonRockDetailFor(spriteName) {
+      if (!isSpaceLevel) return null;
+      if (
+        spriteName !== "ground" &&
+        spriteName !== "block" &&
+        spriteName !== "ground-cloud"
+      ) {
+        return null;
+      }
+      return {
+        id: "moonRockDetail",
+        require: ["pos"],
+        draw() {
+          const tileX = Math.floor(this.pos.x / tileSize);
+          const tileY = Math.floor(this.pos.y / tileSize);
+          const seed = Math.abs(tileX * 97 + tileY * 57);
+
+          const c1x = 7 + (seed % 10);
+          const c1y = 8 + (Math.floor(seed / 3) % 8);
+          const c1r = 2.8 + (seed % 3) * 0.45;
+          drawCircle({
+            pos: this.pos.add(c1x, c1y),
+            radius: c1r,
+            color: rgb(110, 114, 124),
+            opacity: 0.35,
+          });
+          drawCircle({
+            pos: this.pos.add(c1x - 1, c1y - 1),
+            radius: Math.max(1.5, c1r - 1.3),
+            color: rgb(170, 174, 182),
+            opacity: 0.22,
+          });
+
+          const c2x = 16 + (Math.floor(seed / 7) % 9);
+          const c2y = 12 + (Math.floor(seed / 5) % 8);
+          const c2r = 2 + (Math.floor(seed / 11) % 3) * 0.4;
+          drawCircle({
+            pos: this.pos.add(c2x, c2y),
+            radius: c2r,
+            color: rgb(106, 110, 120),
+            opacity: 0.28,
+          });
+        },
+      };
+    }
+
     function solidTile(spriteName, extra = []) {
       const tint = tileTintFor(spriteName);
+      const moonRockDetail = moonRockDetailFor(spriteName);
       return [
         sprite(spriteName),
         ...(tint ? [color(tint.r, tint.g, tint.b)] : []),
+        ...(moonRockDetail ? [moonRockDetail] : []),
         area(),
         body({ isStatic: true }),
         perfCull(),
@@ -399,10 +478,45 @@ export function registerGameScene(ctx) {
       ];
     }
 
+    function astroHelmetComponent() {
+      return {
+        id: "astroHelmet",
+        require: ["pos"],
+        draw() {
+          const center = this.pos.add(tileSize * 0.5, tileSize * 0.35);
+          const helmetRadius = tileSize * 0.26;
+          drawCircle({
+            pos: center,
+            radius: helmetRadius,
+            color: rgb(195, 229, 255),
+            opacity: 0.25,
+          });
+          drawCircle({
+            pos: center,
+            radius: helmetRadius,
+            fill: false,
+            outline: {
+              width: 2,
+              color: rgb(238, 246, 255),
+            },
+            opacity: 0.82,
+          });
+          drawCircle({
+            pos: center.add(-tileSize * 0.08, -tileSize * 0.08),
+            radius: tileSize * 0.06,
+            color: rgb(255, 255, 255),
+            opacity: 0.38,
+          });
+        },
+      };
+    }
+
     function enemyTile(spriteName, opts = {}, tilePos = null) {
       const phase =
         opts.flightPhase ??
         (tilePos ? tilePos.x * 0.31 + tilePos.y * 0.47 : rand(0, Math.PI * 2));
+      const helmetComponents = opts.astro ? [astroHelmetComponent()] : [];
+      const astroTags = opts.astro ? ["astroEnemy"] : [];
       if (opts.flying) {
         return [
           sprite(spriteName),
@@ -414,6 +528,8 @@ export function registerGameScene(ctx) {
           "enemy",
           "danger",
           "flyingEnemy",
+          ...astroTags,
+          ...helmetComponents,
           {
             home: null,
             flightRangeX: opts.flightRangeX ?? 84,
@@ -434,6 +550,35 @@ export function registerGameScene(ctx) {
           },
         ];
       }
+      if (opts.floater) {
+        return [
+          sprite(spriteName),
+          area({
+            scale: vec2(0.72, 0.72),
+            offset: vec2(4.5, 8.3),
+          }),
+          perfCull({ margin: tileSize * 10 }),
+          "enemy",
+          "danger",
+          "floaterEnemy",
+          ...astroTags,
+          ...helmetComponents,
+          {
+            home: null,
+            floatRangeY: opts.floatRangeY ?? 20,
+            floatSpeed: opts.floatSpeed ?? 1.9,
+            floatPhase: phase,
+            update() {
+              if (!this.home) this.home = this.pos.clone();
+              const t = time() * this.floatSpeed + this.floatPhase;
+              this.pos.x = this.home.x;
+              this.pos.y = this.home.y + Math.sin(t) * this.floatRangeY;
+              this.flipX = false;
+              if (this.pos.y > worldDeathY) destroy(this);
+            },
+          },
+        ];
+      }
       return [
         sprite(spriteName),
         // Keep damage contact slightly inset from robot art to avoid "ghost" hits.
@@ -445,6 +590,8 @@ export function registerGameScene(ctx) {
         perfCull({ margin: tileSize * 10 }),
         "enemy",
         "danger",
+        ...astroTags,
+        ...helmetComponents,
         {
           dir: -1,
           speed: opts.speed,
@@ -536,7 +683,19 @@ export function registerGameScene(ctx) {
                   flightSpeed: 1.62,
                   flightSwoopFactor: 2.2,
                 }
-              : { speed: CONFIG.enemySpeed, smart: true },
+              : isSpaceLevel
+                ? { speed: CONFIG.enemySpeed, smart: true, astro: true }
+                : { speed: CONFIG.enemySpeed, smart: true },
+            tilePos,
+          ),
+        a: (tilePos) =>
+          enemyTile(
+            "robot-red",
+            {
+              speed: CONFIG.enemySpeed,
+              smart: true,
+              astro: true,
+            },
             tilePos,
           ),
         b: () =>
@@ -544,6 +703,17 @@ export function registerGameScene(ctx) {
             speed: CONFIG.enemyFastSpeed,
             smart: true,
           }),
+        f: (tilePos) =>
+          enemyTile(
+            "robot-blue",
+            {
+              floater: true,
+              floatRangeY: 19,
+              floatSpeed: 2.1,
+              astro: true,
+            },
+            tilePos,
+          ),
         p: () =>
           enemyTile("robot-pink", {
             speed: CONFIG.enemySpeed - 14,
@@ -753,6 +923,87 @@ export function registerGameScene(ctx) {
       ]);
     }
 
+    function addSpaceLevelBackdrop() {
+      const backdrop = add([pos(0, 0), z(-236)]);
+      const levelW = level.levelWidth();
+
+      backdrop.add([
+        rect(levelW + 400, height() + 20),
+        pos(-200, -10),
+        color(2, 6, 20),
+        opacity(1),
+      ]);
+
+      backdrop.add([
+        rect(360, 110, { radius: 55 }),
+        pos(250, 126),
+        color(40, 58, 102),
+        opacity(0.18),
+      ]);
+      backdrop.add([
+        rect(300, 94, { radius: 47 }),
+        pos(760, 156),
+        color(32, 44, 84),
+        opacity(0.18),
+      ]);
+
+      for (let i = 0; i < 170; i++) {
+        const starX = rand(-100, levelW + 100);
+        const starY = rand(0, height() - 44);
+        const starRadius = rand(0.65, 2.05);
+        const starAlpha = rand(0.28, 0.96);
+        const starPhase = rand(0, Math.PI * 2);
+        const starSpeed = rand(1.1, 3.6);
+
+        backdrop.add([
+          circle(starRadius),
+          pos(starX, starY),
+          color(255, 255, 255),
+          opacity(starAlpha),
+          perfCull({ margin: tileSize * 10, hide: false }),
+          {
+            update() {
+              this.opacity =
+                starAlpha * (0.58 + Math.sin(time() * starSpeed + starPhase) * 0.42);
+            },
+          },
+        ]);
+      }
+
+      backdrop.add([
+        circle(36),
+        pos(172, 92),
+        color(176, 194, 222),
+        opacity(0.84),
+      ]);
+
+      const horizon = add([pos(0, 0), z(-232)]);
+      horizon.add([
+        circle(215),
+        pos(130, 470),
+        color(120, 128, 145),
+        opacity(0.92),
+      ]);
+      horizon.add([
+        circle(238),
+        pos(380, 464),
+        color(146, 154, 170),
+        opacity(0.9),
+      ]);
+      horizon.add([
+        circle(210),
+        pos(700, 472),
+        color(120, 128, 145),
+        opacity(0.92),
+      ]);
+      horizon.add([
+        circle(236),
+        pos(960, 462),
+        color(146, 154, 170),
+        opacity(0.9),
+      ]);
+    }
+
     function addCastleLevelBackdrop({ includeEmbers = true } = {}) {
       const backdrop = add([pos(0, 0), z(-230)]);
       const levelW = level.levelWidth();
@@ -807,10 +1058,77 @@ export function registerGameScene(ctx) {
       }
     }
 
+    function addMoonSetPieces() {
+      if (!isSpaceLevel) return;
+      const sceneProps = add([pos(0, 0), z(-80)]);
+
+      if (!goalPoleTile) return;
+      const surfaceY = level.tile2Pos(vec2(goalPoleTile.x, mapGroundY)).y + tileSize;
+      const domeCenter = vec2(
+        level.tile2Pos(goalPoleTile).x + tileSize * 2.2,
+        surfaceY - tileSize * 1.06,
+      );
+
+      sceneProps.add([
+        rect(tileSize * 3.2, tileSize * 0.66, { radius: 5 }),
+        pos(domeCenter.add(-tileSize * 1.6, tileSize * 0.42)),
+        color(118, 126, 138),
+        opacity(0.93),
+        perfCull({ margin: tileSize * 12 }),
+      ]);
+      sceneProps.add([
+        circle(tileSize * 1.08),
+        pos(domeCenter),
+        color(170, 180, 195),
+        opacity(0.92),
+        perfCull({ margin: tileSize * 12 }),
+      ]);
+      sceneProps.add([
+        circle(tileSize * 0.86),
+        pos(domeCenter.add(0, -tileSize * 0.06)),
+        color(210, 222, 236),
+        opacity(0.28),
+        perfCull({ margin: tileSize * 12 }),
+      ]);
+      sceneProps.add([
+        rect(tileSize * 0.7, tileSize * 0.42, { radius: 3 }),
+        pos(domeCenter.add(-tileSize * 0.35, tileSize * 0.3)),
+        color(88, 96, 108),
+        opacity(0.88),
+        perfCull({ margin: tileSize * 12 }),
+      ]);
+
+      const rocketAnchor = domeCenter.add(-tileSize * 4.9, -tileSize * 2.5);
+      sceneProps.add([
+        sprite("ufo-boss"),
+        pos(rocketAnchor),
+        scale(1.25),
+        color(214, 224, 240),
+        opacity(0.92),
+        perfCull({ margin: tileSize * 12 }),
+        {
+          home: null,
+          update() {
+            if (!this.home) this.home = this.pos.clone();
+            this.pos.y = this.home.y + Math.sin(time() * 1.6) * 2.5;
+          },
+        },
+      ]);
+      sceneProps.add([
+        circle(tileSize * 0.48),
+        pos(rocketAnchor.add(tileSize * 0.82, tileSize * 2.1)),
+        color(108, 116, 128),
+        opacity(0.62),
+        perfCull({ margin: tileSize * 12 }),
+      ]);
+    }
+
     if (isCastleLevel) addCastleLevelBackdrop({ includeEmbers: !isBossLevel });
     else if (isDesertLevel) addDesertLevelBackdrop();
     else if (isCloudLevel) addCloudLevelBackdrop();
+    else if (isSpaceLevel) addSpaceLevelBackdrop();
     else addGrassyLevelBackdrop();
+    addMoonSetPieces();
 
     const playerStartPos = level.tile2Pos(playerSpawnTile).add(0, -tileSize);
 
@@ -870,6 +1188,22 @@ export function registerGameScene(ctx) {
         move(vec2(rand(-1, 1), rand(-1, -0.2)), rand(40, 90)),
         z(1500),
       ]);
+    }
+
+    function spawnJetpackPuff() {
+      if (!jumpJetFx) return;
+      const basePos = player.pos.add(tileSize * 0.5, tileSize * 0.95);
+      for (let i = 0; i < 6; i++) {
+        add([
+          circle(rand(1.8, 3.6)),
+          pos(basePos.add(rand(-7, 7), rand(-2, 4))),
+          color(205, 220, 238),
+          opacity(rand(0.28, 0.62)),
+          lifespan(0.42, { fade: 0.22 }),
+          move(vec2(rand(-0.45, 0.45), 1), rand(55, 105)),
+          z(1560),
+        ]);
+      }
     }
 
     function loseLife(reason = "hurt") {
@@ -1848,8 +2182,13 @@ export function registerGameScene(ctx) {
       const moveDir = (leftDown ? -1 : 0) + (rightDown ? 1 : 0);
       const isRunning = runDown;
       const maxSpeed = isRunning ? CONFIG.runSpeed : CONFIG.walkSpeed;
-      const accel = player.isGrounded() ? CONFIG.accelGround : CONFIG.accelAir;
-      const decel = player.isGrounded() ? CONFIG.decelGround : CONFIG.decelAir;
+      const grounded = player.isGrounded();
+      const accel = grounded
+        ? CONFIG.accelGround
+        : CONFIG.accelAir * airControlMultiplier;
+      const decel = grounded
+        ? CONFIG.decelGround
+        : CONFIG.decelAir * airBrakeMultiplier;
 
       if (moveDir !== 0) {
         facing = moveDir;
@@ -1940,6 +2279,7 @@ export function registerGameScene(ctx) {
         player.gravityScale = wingActive ? CONFIG.wingGravityScale : 1;
         player.jump(jumpedFromVine ? CONFIG.jumpForce * 0.88 : CONFIG.jumpForce);
         playSfx("jump");
+        spawnJetpackPuff();
       }
 
       // Death by falling.
@@ -2059,7 +2399,7 @@ export function registerGameScene(ctx) {
 
     // Enemy patrol + cliff-safe walking.
     for (const enemy of get("enemy")) {
-      if (enemy.is("flyingEnemy")) {
+      if (enemy.is("flyingEnemy") || enemy.is("floaterEnemy")) {
         continue;
       }
       enemy.edgeCheckCooldown = 0;

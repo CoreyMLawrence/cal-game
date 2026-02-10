@@ -5,6 +5,7 @@ import {
   buildDesert1Level,
   buildLevel1,
   buildLevel2,
+  buildMoon1Level,
   buildSecretPowerupLevel,
   buildTrainingLevel,
 } from "../levels/index.js";
@@ -19,6 +20,7 @@ export function createGameCore() {
     tileSize: 32,
 
     gravity: 2400,
+    gravityMoon: 800,
 
     // Movement feel (adds “Mario-like” polish).
     walkSpeed: 240,
@@ -27,6 +29,8 @@ export function createGameCore() {
     accelAir: 1400,
     decelGround: 2800,
     decelAir: 1600,
+    moonAirAccelScale: 1.35,
+    moonAirDecelScale: 1.2,
     coyoteTime: 0.12,
     jumpBuffer: 0.12,
     jumpForce: 900,
@@ -492,7 +496,7 @@ export function createGameCore() {
       title: "SKY VINE ASCENT",
       buildMap: buildCloud1Level,
       timeLimit: CONFIG.timeLimit + 40,
-      nextLevelId: null,
+      nextLevelId: "level-4-1",
       music: "overworld",
       levelStyle: "cloud",
       tutorialSteps: [
@@ -511,6 +515,29 @@ export function createGameCore() {
         {
           x: 150 * CONFIG.tileSize,
           text: "Red robots fly in this world. Time their swoops before committing.",
+        },
+      ],
+    },
+    "level-4-1": {
+      id: "level-4-1",
+      title: "MOON LANDING",
+      buildMap: buildMoon1Level,
+      timeLimit: CONFIG.timeLimit + 45,
+      nextLevelId: null,
+      music: "overworld",
+      levelStyle: "space",
+      gravity: CONFIG.gravityMoon,
+      airControlMultiplier: CONFIG.moonAirAccelScale,
+      airBrakeMultiplier: CONFIG.moonAirDecelScale,
+      jumpJetFx: true,
+      tutorialSteps: [
+        {
+          x: 18 * CONFIG.tileSize,
+          text: "Moon gravity is low. Jumps are higher and falls are slower.",
+        },
+        {
+          x: 66 * CONFIG.tileSize,
+          text: "Use extra air time to clear wide craters and dodge hover-bots.",
         },
       ],
     },

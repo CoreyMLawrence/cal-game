@@ -1,6 +1,7 @@
 export function registerIntroScene(ctx) {
   const {
     registerCommonHotkeys,
+    CONFIG,
     bgm,
     drawStars,
     addFadeIn,
@@ -13,6 +14,7 @@ export function registerIntroScene(ctx) {
 
   scene("intro", () => {
     registerCommonHotkeys();
+    setGravity(CONFIG.gravity);
     bgm.requestTrack(null);
     drawStars();
     addFadeIn();

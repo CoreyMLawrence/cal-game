@@ -24,6 +24,7 @@ export function registerWorldMapScene(ctx) {
   scene("worldMap", (data) => {
     const characterId = data?.characterId ?? "cal";
     registerCommonHotkeys({ characterId });
+    setGravity(CONFIG.gravity);
     addFadeIn();
 
     const worldId =
@@ -104,6 +105,15 @@ export function registerWorldMapScene(ctx) {
       const c = t * t;
       return p0.scale(a).add(p1.scale(b)).add(p2.scale(c));
     }
+
+    const mapStars = Array.from({ length: 120 }, () => ({
+      x: rand(0, width()),
+      y: rand(0, height() * 0.74),
+      r: rand(0.8, 2.1),
+      alpha: rand(0.3, 0.94),
+      phase: rand(0, Math.PI * 2),
+      speed: rand(1.3, 3.3),
+    }));
 
     function drawGrassyMapBackground() {
       drawRect({
@@ -387,6 +397,100 @@ export function registerWorldMapScene(ctx) {
       }
     }
 
+    function drawSpaceMapBackground() {
+      drawRect({
+        pos: vec2(0, 0),
+        width: width(),
+        height: height(),
+        gradient: [theme.skyTop, theme.skyBottom],
+        fixed: true,
+      });
+
+      drawEllipse({
+        pos: vec2(220, 120),
+        radiusX: 150,
+        radiusY: 62,
+        color: theme.nebulaA,
+        opacity: 0.24,
+        fixed: true,
+      });
+      drawEllipse({
+        pos: vec2(720, 150),
+        radiusX: 180,
+        radiusY: 70,
+        color: theme.nebulaB,
+        opacity: 0.19,
+        fixed: true,
+      });
+
+      for (const star of mapStars) {
+        const twinkle =
+          0.65 + Math.sin(time() * star.speed + star.phase) * 0.35;
+        drawCircle({
+          pos: vec2(star.x, star.y),
+          radius: star.r,
+          color: rgb(255, 255, 255),
+          opacity: star.alpha * twinkle,
+          fixed: true,
+        });
+      }
+
+      drawCircle({
+        pos: vec2(126, 96),
+        radius: 34,
+        color: rgb(186, 206, 236),
+        opacity: 0.86,
+        fixed: true,
+      });
+
+      drawCircle({
+        pos: vec2(140, 470),
+        radius: 200,
+        color: theme.moonSurfaceDark,
+        fixed: true,
+      });
+      drawCircle({
+        pos: vec2(430, 456),
+        radius: 226,
+        color: theme.moonSurfaceLight,
+        fixed: true,
+      });
+      drawCircle({
+        pos: vec2(760, 472),
+        radius: 198,
+        color: theme.moonSurfaceDark,
+        fixed: true,
+      });
+      drawCircle({
+        pos: vec2(980, 448),
+        radius: 214,
+        color: theme.moonSurfaceLight,
+        fixed: true,
+      });
+
+      drawCircle({
+        pos: vec2(290, 438),
+        radius: 22,
+        color: rgb(108, 116, 132),
+        opacity: 0.55,
+        fixed: true,
+      });
+      drawCircle({
+        pos: vec2(602, 432),
+        radius: 28,
+        color: rgb(106, 114, 130),
+        opacity: 0.5,
+        fixed: true,
+      });
+      drawCircle({
+        pos: vec2(828, 446),
+        radius: 18,
+        color: rgb(108, 116, 132),
+        opacity: 0.54,
+        fixed: true,
+      });
+    }
+
     function drawConnections() {
       for (const c of world.connections) {
         const from = getNode(c.fromLevelId);
@@ -429,6 +533,7 @@ export function registerWorldMapScene(ctx) {
     onDraw(() => {
       if (theme.mapStyle === "desert") drawDesertMapBackground();
       else if (theme.mapStyle === "cloud") drawCloudMapBackground();
+      else if (theme.mapStyle === "space") drawSpaceMapBackground();
       else drawGrassyMapBackground();
       drawConnections();
     });

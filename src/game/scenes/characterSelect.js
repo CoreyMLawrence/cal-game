@@ -16,6 +16,7 @@ export function registerCharacterSelectScene(ctx) {
 
   scene("characterSelect", () => {
     registerCommonHotkeys();
+    setGravity(CONFIG.gravity);
     bgm.requestTrack(null);
     add([rect(width(), height()), pos(0, 0), color(0, 0, 0), fixed()]);
     addFadeIn();

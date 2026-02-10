@@ -1,6 +1,7 @@
 export function registerGameOverScene(ctx) {
   const {
     registerCommonHotkeys,
+    CONFIG,
     bgm,
     addFadeIn,
     centerBoxText,
@@ -13,6 +14,7 @@ export function registerGameOverScene(ctx) {
 
   scene("gameOver", (data) => {
     registerCommonHotkeys();
+    setGravity(CONFIG.gravity);
     bgm.requestTrack(null);
     add([rect(width(), height()), pos(0, 0), color(0, 0, 0), fixed()]);
     addFadeIn();
