@@ -671,8 +671,8 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
   function toCloudBass(midi, stepIndex) {
     if (midi == null) return N;
     const beatStep = stepIndex % 8;
-    // Light pulse bass: downbeats only.
-    if (beatStep === 0 || beatStep === 4) return toCloudColor(midi, stepIndex);
+    // Very light anchor: first beat only, lifted an octave to reduce weight.
+    if (beatStep === 0) return toCloudColor(midi, stepIndex) + 12;
     return N;
   }
 
@@ -680,9 +680,10 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     if (midi == null) return N;
     const beatStep = stepIndex % 8;
     let note = toCloudColor(midi, stepIndex) + 12;
-    // Top sparkle at the end of each bar.
-    if (beatStep === 7 && note <= 95) note += 12;
-    return note;
+    // Sparse glints instead of constant motion.
+    if (beatStep === 1 || beatStep === 5) return note;
+    if (beatStep === 7 && note <= 95) return note + 12;
+    return N;
   }
 
   function toDesertColor(midi) {
@@ -790,25 +791,25 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       groove: "tense",
     }),
     "overworld-cloud": Object.freeze({
-      bpm: 176,
+      bpm: 166,
       stepsPerBeat: BGM_TRACKS.overworld.stepsPerBeat,
       melody: BGM_TRACKS.overworld.melody.map((m, i) => toCloudMelody(m, i)),
       harmony: BGM_TRACKS.overworld.harmony.map((m, i) => toCloudHarmony(m, i)),
       bass: BGM_TRACKS.overworld.bass.map((m, i) => toCloudBass(m, i)),
       arp: BGM_TRACKS.overworld.arp.map((m, i) => toCloudArp(m, i)),
-      melodyType: "square",
+      melodyType: "triangle",
       harmonyType: "sine",
-      bassType: "triangle",
-      arpType: "triangle",
-      melodyGain: 0.03,
-      harmonyGain: 0.01,
-      bassGain: 0.016,
-      arpGain: 0.009,
-      durFactor: 0.84,
-      arpDurFactor: 0.42,
-      accentStrength: 0.72,
+      bassType: "sine",
+      arpType: "sine",
+      melodyGain: 0.029,
+      harmonyGain: 0.0115,
+      bassGain: 0.0105,
+      arpGain: 0.0075,
+      durFactor: 1.05,
+      arpDurFactor: 0.64,
+      accentStrength: 0.2,
       groove: "cloud",
-      trackGain: 1.08,
+      trackGain: 1.12,
     }),
     "overworld-desert": Object.freeze({
       bpm: 160,
@@ -1066,18 +1067,18 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
             scheduleHat(t, (beatStep === 7 ? 0.005 : 0.0036) * trackGain);
           }
         } else if (track.groove === "cloud") {
-          // Buoyant, bright pulse with light airy noise tails.
-          if (beatStep === 0 || beatStep === 4) scheduleKick(t, 0.018 * trackGain);
-          if (beatStep === 2 || beatStep === 6) scheduleSnare(t, 0.009 * trackGain);
-          if (beatStep % 2 === 1) scheduleHat(t, 0.0072 * trackGain);
-          if (beatStep === 1 || beatStep === 5) {
+          // Weightless cloud pulse: minimal low-end, soft air swells.
+          if (beatStep === 0) scheduleKick(t, 0.0105 * trackGain);
+          if (beatStep === 4) scheduleKick(t, 0.0075 * trackGain);
+          if (beatStep === 2 || beatStep === 6) scheduleHat(t, 0.0028 * trackGain);
+          if (beatStep === 1 || beatStep === 5 || beatStep === 7) {
             scheduleNoise({
               time: t,
-              dur: stepDur * 1.1,
-              gain: 0.0015 * trackGain,
+              dur: stepDur * 2.2,
+              gain: 0.0026 * trackGain,
               type: "highpass",
-              freq: 6800,
-              q: 0.8,
+              freq: 7200,
+              q: 0.65,
             });
           }
         } else if (track.groove === "desert") {

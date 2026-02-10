@@ -340,9 +340,11 @@ export function createGameCore() {
     ground: "assets/ground.svg",
     groundCastle: "assets/ground-castle.svg",
     groundDesert: "assets/ground-desert.svg",
+    groundMoon: "assets/ground-moon.svg",
     groundCloud: "assets/ground-cloud.svg",
     block: "assets/block.svg",
     blockCastle: "assets/block-castle.svg",
+    blockMoon: "assets/block-moon.svg",
     question: "assets/question.svg",
     usedBlock: "assets/used-block.svg",
     coin: "assets/coin.svg",
@@ -368,9 +370,11 @@ export function createGameCore() {
   loadSprite("ground", ASSETS.ground);
   loadSprite("ground-castle", ASSETS.groundCastle);
   loadSprite("ground-desert", ASSETS.groundDesert);
+  loadSprite("ground-moon", ASSETS.groundMoon);
   loadSprite("ground-cloud", ASSETS.groundCloud);
   loadSprite("block", ASSETS.block);
   loadSprite("block-castle", ASSETS.blockCastle);
+  loadSprite("block-moon", ASSETS.blockMoon);
   loadSprite("question", ASSETS.question);
   loadSprite("used-block", ASSETS.usedBlock);
   loadSprite("coin", ASSETS.coin);
@@ -530,16 +534,7 @@ export function createGameCore() {
       airControlMultiplier: CONFIG.moonAirAccelScale,
       airBrakeMultiplier: CONFIG.moonAirDecelScale,
       jumpJetFx: true,
-      tutorialSteps: [
-        {
-          x: 18 * CONFIG.tileSize,
-          text: "Moon gravity is low. Jumps are higher and falls are slower.",
-        },
-        {
-          x: 66 * CONFIG.tileSize,
-          text: "Use extra air time to clear wide craters and dodge hover-bots.",
-        },
-      ],
+      tutorialSteps: null,
     },
     [SECRET_POWERUP_LEVEL_ID]: {
       id: SECRET_POWERUP_LEVEL_ID,

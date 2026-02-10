@@ -92,11 +92,15 @@ export function registerGameScene(ctx) {
       ? "ground-castle"
       : isDesertLevel
         ? "ground-desert"
-        : isCloudLevel
-          ? "ground-cloud"
-        : "ground";
+        : isSpaceLevel
+          ? "ground-moon"
+          : isCloudLevel
+            ? "ground-cloud"
+            : "ground";
     const blockSpriteName = isCastleLevel
       ? "block-castle"
+      : isSpaceLevel
+        ? "block-moon"
       : isCloudLevel
         ? "ground-cloud"
         : "block";
@@ -162,15 +166,25 @@ export function registerGameScene(ctx) {
       }
     }
 
-    function tileTintFor(spriteName) {
+    function tileTintFor(spriteName, tilePos = null) {
       if (isSpaceLevel) {
         if (spriteName === "spring") return rgb(178, 182, 190);
         if (
           spriteName === "ground" ||
           spriteName === "block" ||
+          spriteName === "ground-moon" ||
+          spriteName === "block-moon" ||
           spriteName === "ground-cloud"
-        )
-          return rgb(148, 152, 160);
+        ) {
+          if (!tilePos) return rgb(148, 152, 160);
+          const tileX = Math.floor(tilePos.x);
+          const tileY = Math.floor(tilePos.y);
+          const seed = Math.abs(tileX * 89 + tileY * 53);
+          const grayBases = [134, 140, 146, 152, 158, 164];
+          const base = grayBases[seed % grayBases.length];
+          const coolShift = (Math.floor(seed / 7) % 3) - 1;
+          return rgb(base + coolShift, base + 3 + coolShift, base + 9 + coolShift);
+        }
         return null;
       }
       if (!isDesertLevel) return null;
@@ -184,6 +198,8 @@ export function registerGameScene(ctx) {
       if (
         spriteName !== "ground" &&
         spriteName !== "block" &&
+        spriteName !== "ground-moon" &&
+        spriteName !== "block-moon" &&
         spriteName !== "ground-cloud"
       ) {
         return null;
@@ -225,8 +241,8 @@ export function registerGameScene(ctx) {
       };
     }
 
-    function solidTile(spriteName, extra = []) {
-      const tint = tileTintFor(spriteName);
+    function solidTile(spriteName, extra = [], tilePos = null) {
+      const tint = tileTintFor(spriteName, tilePos);
       const moonRockDetail = moonRockDetailFor(spriteName);
       return [
         sprite(spriteName),
@@ -613,17 +629,20 @@ export function registerGameScene(ctx) {
           solidTile(
             groundSpriteName,
             isCloudLevel && tilePos.y < mapGroundY ? ["cloudSemi"] : [],
+            tilePos,
           ),
         "#": (tilePos) =>
           solidTile(
             blockSpriteName,
             isCloudLevel && tilePos.y < mapGroundY ? ["cloudSemi"] : [],
+            tilePos,
           ),
-        B: () => solidTile(blockSpriteName, ["brick", "breakable"]),
-        "~": () => [
+        B: (tilePos) => solidTile(blockSpriteName, ["brick", "breakable"], tilePos),
+        "~": (tilePos) => [
           ...solidTile(
             blockSpriteName,
             isCloudLevel ? ["platform", "cloudSemi"] : ["platform"],
+            tilePos,
           ),
           movingPlatform({
             range: isCloudLevel ? 68 : 56,
@@ -634,6 +653,7 @@ export function registerGameScene(ctx) {
           ...solidTile(
             blockSpriteName,
             isCloudLevel ? ["platform", "cloudSemi"] : ["platform"],
+            tilePos,
           ),
           movingPlatform({
             axis: "y",
@@ -643,7 +663,7 @@ export function registerGameScene(ctx) {
           }),
         ],
         c: () => fragileCloudTile(),
-        "^": () => solidTile("spring", ["spring"]),
+        "^": (tilePos) => solidTile("spring", ["spring"], tilePos),
         L: () => lavaTile(),
         F: () => fireTile(),
         o: () => coinTile(),
@@ -887,19 +907,6 @@ export function registerGameScene(ctx) {
         opacity(1),
       ]);
 
-      backdrop.add([
-        rect(360, 110, { radius: 55 }),
-        pos(250, 126),
-        color(40, 58, 102),
-        opacity(0.18),
-      ]);
-      backdrop.add([
-        rect(300, 94, { radius: 47 }),
-        pos(760, 156),
-        color(32, 44, 84),
-        opacity(0.18),
-      ]);
-
       for (let i = 0; i < 170; i++) {
         const starX = rand(-100, levelW + 100);
         const starY = rand(0, height() - 44);
@@ -923,38 +930,54 @@ export function registerGameScene(ctx) {
         ]);
       }
 
-      backdrop.add([
-        circle(36),
-        pos(172, 92),
-        color(176, 194, 222),
-        opacity(0.84),
-      ]);
+      const distantBodies = add([pos(0, 0), z(-234)]);
+      const bodyPalettes = [
+        { body: rgb(110, 146, 204), glow: rgb(148, 182, 236) },
+        { body: rgb(172, 126, 94), glow: rgb(220, 166, 124) },
+        { body: rgb(92, 152, 160), glow: rgb(134, 196, 206) },
+      ];
+      let bodyX = width() + 120;
+      while (bodyX < levelW + 260) {
+        const paletteIndex = Math.min(
+          bodyPalettes.length - 1,
+          Math.floor(rand(0, bodyPalettes.length)),
+        );
+        const palette = bodyPalettes[paletteIndex];
+        const bodyRadius = rand(8, 18);
+        const bodyY = rand(48, 170);
+        const bodyAlpha = rand(0.24, 0.46);
 
-      const horizon = add([pos(0, 0), z(-232)]);
-      horizon.add([
-        circle(215),
-        pos(130, 470),
-        color(120, 128, 145),
-        opacity(0.92),
-      ]);
-      horizon.add([
-        circle(238),
-        pos(380, 464),
-        color(146, 154, 170),
-        opacity(0.9),
-      ]);
-      horizon.add([
-        circle(210),
-        pos(700, 472),
-        color(120, 128, 145),
-        opacity(0.92),
-      ]);
-      horizon.add([
-        circle(236),
-        pos(960, 462),
-        color(146, 154, 170),
-        opacity(0.9),
-      ]);
+        distantBodies.add([
+          circle(bodyRadius + rand(2, 5)),
+          pos(bodyX, bodyY),
+          color(palette.glow.r, palette.glow.g, palette.glow.b),
+          opacity(bodyAlpha * 0.32),
+          perfCull({ margin: tileSize * 14 }),
+        ]);
+        distantBodies.add([
+          circle(bodyRadius),
+          pos(bodyX, bodyY),
+          color(palette.body.r, palette.body.g, palette.body.b),
+          opacity(bodyAlpha),
+          perfCull({ margin: tileSize * 14 }),
+        ]);
+
+        if (rand(0, 1) > 0.62) {
+          const miniMoonRadius = Math.max(2.2, bodyRadius * 0.22);
+          distantBodies.add([
+            circle(miniMoonRadius),
+            pos(
+              bodyX + rand(-bodyRadius * 2.4, bodyRadius * 2.4),
+              bodyY + rand(-bodyRadius * 1.4, bodyRadius * 1.4),
+            ),
+            color(188, 202, 222),
+            opacity(bodyAlpha * 0.74),
+            perfCull({ margin: tileSize * 14 }),
+          ]);
+        }
+
+        bodyX += rand(420, 620);
+      }
     }
 
     function addCastleLevelBackdrop({ includeEmbers = true } = {}) {
