@@ -67,6 +67,7 @@ export function registerGameScene(ctx) {
     const map = levelSpec.buildMap();
     const mapGroundY = map.length - 1;
     const tileSize = CONFIG.tileSize;
+    const floorSolidDepthRows = 5;
     const groundSpriteName = isCastleLevel
       ? "ground-castle"
       : isDesertLevel
@@ -550,6 +551,55 @@ export function registerGameScene(ctx) {
           }),
       },
     });
+
+    function addFloorReinforcement() {
+      if (floorSolidDepthRows <= 0) return;
+
+      const floorTileY = level.numRows() - 1;
+      const floorSupportTopY = floorTileY * tileSize;
+      const floorSupportHeight = tileSize * floorSolidDepthRows;
+      const floorColumns = new Array(level.numColumns()).fill(false);
+      const tile = vec2(0, floorTileY);
+
+      for (let tileX = 0; tileX < level.numColumns(); tileX++) {
+        tile.x = tileX;
+        floorColumns[tileX] = level
+          .getAt(tile)
+          .some(
+            (obj) =>
+              obj &&
+              typeof obj.is === "function" &&
+              obj.is("solid") &&
+              obj.solidEnabled !== false,
+          );
+      }
+
+      // Merge contiguous columns so reinforcement is added as a few wide colliders.
+      let segmentStart = -1;
+      for (let tileX = 0; tileX <= floorColumns.length; tileX++) {
+        const isSolidColumn = tileX < floorColumns.length ? floorColumns[tileX] : false;
+
+        if (isSolidColumn) {
+          if (segmentStart === -1) segmentStart = tileX;
+          continue;
+        }
+        if (segmentStart === -1) continue;
+
+        const segmentWidth = (tileX - segmentStart) * tileSize;
+        add([
+          rect(segmentWidth, floorSupportHeight),
+          pos(segmentStart * tileSize, floorSupportTopY),
+          area(),
+          body({ isStatic: true }),
+          opacity(0),
+          "solid",
+          "floorReinforcement",
+        ]);
+        segmentStart = -1;
+      }
+    }
+
+    addFloorReinforcement();
     worldDeathY = level.levelHeight() + CONFIG.fallDeathPadding;
 
     function addGrassyLevelBackdrop() {
@@ -1240,6 +1290,7 @@ export function registerGameScene(ctx) {
         text(label, { size: 24, align: "center" }),
         pos(width() / 2, y),
         anchor("center"),
+        scale(1),
         color(215, 225, 245),
         opacity(0),
         fixed(),
@@ -1277,12 +1328,18 @@ export function registerGameScene(ctx) {
     function updatePauseMenuVisuals() {
       if (!pauseActive) return;
       for (let i = 0; i < pauseOptionTexts.length; i++) {
+        const optionText = pauseOptionTexts[i];
+        if (!optionText || !optionText.exists()) continue;
         const selected = i === pauseSelection;
-        pauseOptionTexts[i].color = selected ? rgb(170, 235, 255) : rgb(215, 225, 245);
-        pauseOptionTexts[i].opacity = selected ? 1 : 0.88;
+        optionText.color = selected ? rgb(170, 235, 255) : rgb(215, 225, 245);
+        optionText.opacity = selected ? 1 : 0.88;
         const targetScale = selected ? 1.05 : 1;
-        pauseOptionTexts[i].scale.x = targetScale;
-        pauseOptionTexts[i].scale.y = targetScale;
+        if (optionText.scale) {
+          optionText.scale.x = targetScale;
+          optionText.scale.y = targetScale;
+        } else {
+          optionText.use(scale(targetScale));
+        }
       }
     }
 
