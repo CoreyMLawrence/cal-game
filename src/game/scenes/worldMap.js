@@ -44,7 +44,9 @@ export function registerWorldMapScene(ctx) {
         ? "overworld-space"
         : theme.id === "desert"
           ? "overworld-desert"
-          : "overworld";
+          : theme.id === "cloud"
+            ? "overworld-cloud"
+            : "overworld";
     bgm.requestTrack(worldMapTrack);
 
     function getNode(levelId) {
