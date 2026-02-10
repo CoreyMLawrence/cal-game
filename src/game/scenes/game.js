@@ -528,6 +528,17 @@ export function registerGameScene(ctx) {
       };
     }
 
+    const ENEMY_STOMP_ZONE_OFFSET_Y = 8.3;
+    const ENEMY_STOMP_ZONE_HEIGHT = 5;
+    const ENEMY_STOMP_ZONE_GRACE = 5;
+
+    function enemyDamageArea() {
+      return area({
+        scale: vec2(0.72, 0.72),
+        offset: vec2(4.5, 8.3),
+      });
+    }
+
     function enemyTile(spriteName, opts = {}, tilePos = null) {
       const phase =
         opts.flightPhase ??
@@ -537,10 +548,7 @@ export function registerGameScene(ctx) {
       if (opts.flying) {
         return [
           sprite(spriteName),
-          area({
-            scale: vec2(0.72, 0.72),
-            offset: vec2(4.5, 8.3),
-          }),
+          enemyDamageArea(),
           perfCull({ margin: tileSize * 10 }),
           "enemy",
           "danger",
@@ -570,10 +578,7 @@ export function registerGameScene(ctx) {
       if (opts.floater) {
         return [
           sprite(spriteName),
-          area({
-            scale: vec2(0.72, 0.72),
-            offset: vec2(4.5, 8.3),
-          }),
+          enemyDamageArea(),
           perfCull({ margin: tileSize * 10 }),
           "enemy",
           "danger",
@@ -599,10 +604,7 @@ export function registerGameScene(ctx) {
       return [
         sprite(spriteName),
         // Keep damage contact slightly inset from robot art to avoid "ghost" hits.
-        area({
-          scale: vec2(0.72, 0.72),
-          offset: vec2(4.5, 8.3),
-        }),
+        enemyDamageArea(),
         body(),
         perfCull({ margin: tileSize * 10 }),
         "enemy",
@@ -2176,6 +2178,75 @@ export function registerGameScene(ctx) {
       addScore(points, enemyPos);
     }
 
+    function destroyEnemyStompZone(enemy) {
+      if (!enemy) return;
+      const zone = enemy.stompZone;
+      if (!zone) return;
+      if (typeof zone.exists !== "function" || zone.exists()) destroy(zone);
+      enemy.stompZone = null;
+    }
+
+    function addEnemyStompZone(enemy) {
+      if (!enemy || !enemy.exists()) return;
+      destroyEnemyStompZone(enemy);
+      enemy.stompZone = add([
+        pos(enemy.pos.x, enemy.pos.y + ENEMY_STOMP_ZONE_OFFSET_Y),
+        rect(tileSize, ENEMY_STOMP_ZONE_HEIGHT),
+        anchor("topleft"),
+        area(),
+        opacity(0),
+        "enemyStompZone",
+        {
+          owner: enemy,
+          update() {
+            if (!this.owner || !this.owner.exists() || this.owner.defeated) {
+              destroy(this);
+              return;
+            }
+            this.pos.x = this.owner.pos.x;
+            this.pos.y = this.owner.pos.y + ENEMY_STOMP_ZONE_OFFSET_Y;
+          },
+        },
+      ]);
+    }
+
+    function enemyStompBounds(enemy) {
+      const zone = enemy?.stompZone;
+      if (
+        zone &&
+        (typeof zone.exists !== "function" || zone.exists()) &&
+        typeof zone.worldArea === "function"
+      ) {
+        const box = zone.worldArea().bbox();
+        return {
+          left: box.pos.x,
+          top: box.pos.y,
+          right: box.pos.x + box.width,
+          bottom: box.pos.y + box.height,
+        };
+      }
+      return {
+        left: enemy.pos.x,
+        top: enemy.pos.y + ENEMY_STOMP_ZONE_OFFSET_Y,
+        right: enemy.pos.x + tileSize,
+        bottom: enemy.pos.y + ENEMY_STOMP_ZONE_OFFSET_Y + ENEMY_STOMP_ZONE_HEIGHT,
+      };
+    }
+
+    function isPlayerStompingEnemy(enemy, col = null) {
+      if (!enemy || !enemy.exists()) return false;
+      if (!player.isFalling()) return false;
+      if (col && col.isBottom()) return true;
+
+      const box = playerBoxAt();
+      const stomp = enemyStompBounds(enemy);
+      if (box.right <= stomp.left || box.left >= stomp.right) return false;
+      return (
+        box.bottom >= stomp.top - ENEMY_STOMP_ZONE_GRACE &&
+        box.bottom <= stomp.bottom + ENEMY_STOMP_ZONE_GRACE
+      );
+    }
+
     function squashEnemy(enemy) {
       if (!enemy || !enemy.exists()) return;
       if (enemy.defeated) return;
@@ -2184,6 +2255,7 @@ export function registerGameScene(ctx) {
       playSfx("stomp");
       shake(3);
       awardStomp(enemy.pos.add(tileSize / 2, tileSize / 2));
+      destroyEnemyStompZone(enemy);
 
       // Keep area() intact during collision processing to avoid kaboom
       // iterating a partially-mutated collider in the same frame.
@@ -2640,6 +2712,19 @@ export function registerGameScene(ctx) {
         player.vel.y * frameDt + carryDelta.y,
       );
 
+      // Manual stomp pass keeps full-width top hits reliable even when overlap events miss.
+      if (player.isFalling()) {
+        for (const enemy of get("enemy")) {
+          if (!enemy || !enemy.exists() || enemy.defeated) continue;
+          const zone = enemy.stompZone;
+          if (!zone || (typeof zone.exists === "function" && !zone.exists())) continue;
+          if (!isPlayerStompingEnemy(enemy)) continue;
+          squashEnemy(enemy);
+          player.jump(CONFIG.bounceForce);
+          break;
+        }
+      }
+
       if (wingActive && player.pos.y < flightCeilingY) {
         player.pos.y = flightCeilingY;
         if (player.vel.y < 0) player.vel.y = 0;
@@ -2763,6 +2848,7 @@ export function registerGameScene(ctx) {
       if (enemy.is("flyingEnemy") || enemy.is("floaterEnemy")) {
         continue;
       }
+      addEnemyStompZone(enemy);
       enemy.edgeCheckCooldown = 0;
 
       enemy.onCollide("solid", (_solid, col) => {
@@ -2795,16 +2881,30 @@ export function registerGameScene(ctx) {
         }
 
         enemy.flipX = enemy.dir > 0;
-        if (enemy.pos.y > worldDeathY) destroy(enemy);
+        if (enemy.pos.y > worldDeathY) {
+          destroyEnemyStompZone(enemy);
+          destroy(enemy);
+        }
       });
     }
 
     // Player vs enemies.
+    player.onCollide("enemyStompZone", (zone, col) => {
+      if (ending) return;
+      const enemy = zone?.owner;
+      if (!enemy || !enemy.exists() || enemy.defeated) return;
+
+      if (isPlayerStompingEnemy(enemy, col)) {
+        squashEnemy(enemy);
+        player.jump(CONFIG.bounceForce);
+      }
+    });
+
     player.onCollide("enemy", (enemy, col) => {
       if (ending) return;
-      if (!enemy || !enemy.exists()) return;
+      if (!enemy || !enemy.exists() || enemy.defeated) return;
 
-      if (col && col.isBottom() && player.isFalling()) {
+      if (isPlayerStompingEnemy(enemy, col)) {
         squashEnemy(enemy);
         player.jump(CONFIG.bounceForce);
         return;

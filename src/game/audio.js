@@ -656,33 +656,41 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     if (midi == null) return N;
     let note = toCloudColor(midi, stepIndex);
     const phraseStep = stepIndex % 32;
-    // Add buoyant octave pops near phrase turnarounds.
-    if ((phraseStep === 14 || phraseStep === 30) && note <= 84) note += 12;
+    // Add buoyant octave pops around phrase pivots for a playful lift.
+    if ((phraseStep === 6 || phraseStep === 14 || phraseStep === 22 || phraseStep === 30) && note <= 84) {
+      note += 12;
+    }
     return note;
   }
 
   function toCloudHarmony(midi, stepIndex) {
     if (midi == null) return N;
-    // Airy sustained upper bed with space between hits.
-    if (stepIndex % 2 === 1) return N;
-    return toCloudColor(midi, stepIndex) + 12;
+    const beatStep = stepIndex % 8;
+    const note = toCloudColor(midi, stepIndex);
+    // Chime on upbeats and answer with a fifth for a cute bounce.
+    if (beatStep === 1 || beatStep === 5) return note + 12;
+    if (beatStep === 3 || beatStep === 7) return note + 19;
+    return N;
   }
 
   function toCloudBass(midi, stepIndex) {
     if (midi == null) return N;
     const beatStep = stepIndex % 8;
-    // Very light anchor: first beat only, lifted an octave to reduce weight.
-    if (beatStep === 0) return toCloudColor(midi, stepIndex) + 12;
+    const note = toCloudColor(midi, stepIndex);
+    // Keep bass tiny and bouncy so the sparkle leads the feel.
+    if (beatStep === 0) return note + 12;
+    if (beatStep === 4) return note + 7;
     return N;
   }
 
   function toCloudArp(midi, stepIndex) {
     if (midi == null) return N;
     const beatStep = stepIndex % 8;
-    let note = toCloudColor(midi, stepIndex) + 12;
-    // Sparse glints instead of constant motion.
-    if (beatStep === 1 || beatStep === 5) return note;
-    if (beatStep === 7 && note <= 95) return note + 12;
+    let note = toCloudColor(midi, stepIndex) + 24;
+    if (note > 108) note -= 12;
+    // Constant twinkles in the high register with occasional extra sparkle.
+    if (beatStep % 2 === 1) return note;
+    if ((beatStep === 2 || beatStep === 6) && note <= 101) return note + 7;
     return N;
   }
 
@@ -797,19 +805,19 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       harmony: BGM_TRACKS.overworld.harmony.map((m, i) => toCloudHarmony(m, i)),
       bass: BGM_TRACKS.overworld.bass.map((m, i) => toCloudBass(m, i)),
       arp: BGM_TRACKS.overworld.arp.map((m, i) => toCloudArp(m, i)),
-      melodyType: "triangle",
-      harmonyType: "sine",
-      bassType: "sine",
-      arpType: "sine",
-      melodyGain: 0.029,
-      harmonyGain: 0.0115,
-      bassGain: 0.0105,
-      arpGain: 0.0075,
-      durFactor: 1.05,
-      arpDurFactor: 0.64,
-      accentStrength: 0.2,
+      melodyType: "chime",
+      harmonyType: "chime-soft",
+      bassType: "triangle",
+      arpType: "chime-soft",
+      melodyGain: 0.028,
+      harmonyGain: 0.0095,
+      bassGain: 0.009,
+      arpGain: 0.0088,
+      durFactor: 0.9,
+      arpDurFactor: 0.42,
+      accentStrength: 0.42,
       groove: "cloud",
-      trackGain: 1.12,
+      trackGain: 1.16,
     }),
     "overworld-desert": Object.freeze({
       bpm: 160,
@@ -921,6 +929,33 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       if (midi == null) return;
 
       const { start, end } = sanitizeStart(time, dur);
+      const span = end - start;
+      if (type === "chime" || type === "chime-soft") {
+        const f0 = midiToFreq(midi);
+        const chimeBrightness = type === "chime" ? 1 : 0.72;
+        const layers = [
+          { wave: "triangle", ratio: 1, amp: 1.0, decay: 1.0 },
+          { wave: "sine", ratio: 2, amp: 0.56, decay: 0.62 },
+          { wave: "sine", ratio: 3, amp: 0.28, decay: 0.46 },
+        ];
+        for (const layer of layers) {
+          const osc = ctx.createOscillator();
+          const amp = ctx.createGain();
+          const layerEnd = start + Math.max(0.02, span * layer.decay);
+          const peakGain = Math.max(SILENT_GAIN, gain * layer.amp * chimeBrightness);
+          osc.type = layer.wave;
+          osc.frequency.setValueAtTime(Math.max(1, f0 * layer.ratio), start);
+          amp.gain.setValueAtTime(SILENT_GAIN, start);
+          amp.gain.exponentialRampToValueAtTime(peakGain, start + 0.004);
+          amp.gain.exponentialRampToValueAtTime(SILENT_GAIN, layerEnd);
+          osc.connect(amp);
+          amp.connect(destination ?? out);
+          osc.start(start);
+          osc.stop(layerEnd + 0.03);
+        }
+        return;
+      }
+
       const attack = Math.min(0.01, Math.max(0.004, (end - start) * 0.3));
       const osc = ctx.createOscillator();
       const amp = ctx.createGain();
@@ -1198,18 +1233,18 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
             scheduleHat(t, (beatStep === 7 ? 0.005 : 0.0036) * trackGain, destination);
           }
         } else if (track.groove === "cloud") {
-          // Weightless cloud pulse: minimal low-end, soft air swells.
-          if (beatStep === 0) scheduleKick(t, 0.0105 * trackGain, destination);
-          if (beatStep === 4) scheduleKick(t, 0.0075 * trackGain, destination);
-          if (beatStep === 2 || beatStep === 6) scheduleHat(t, 0.0028 * trackGain, destination);
-          if (beatStep === 1 || beatStep === 5 || beatStep === 7) {
+          // Bright, playful bounce with light taps and sparkly air.
+          if (beatStep === 0) scheduleKick(t, 0.0086 * trackGain, destination);
+          if (beatStep === 4) scheduleSnare(t, 0.0062 * trackGain, destination);
+          if (beatStep % 2 === 1) scheduleHat(t, 0.0032 * trackGain, destination);
+          if (beatStep === 3 || beatStep === 7) {
             scheduleNoise({
               time: t,
-              dur: stepDur * 2.2,
-              gain: 0.0026 * trackGain,
+              dur: stepDur * 1.2,
+              gain: 0.0022 * trackGain,
               type: "highpass",
-              freq: 7200,
-              q: 0.65,
+              freq: 9300,
+              q: 0.78,
               destination,
             });
           }
