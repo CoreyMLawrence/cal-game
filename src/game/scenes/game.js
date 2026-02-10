@@ -88,7 +88,6 @@ export function registerGameScene(ctx) {
           ? CONFIG.moonAirDecelScale
           : 1;
     const jumpJetFx = levelSpec.jumpJetFx === true || isSpaceLevel;
-    const floorSolidDepthRows = 5;
     const groundSpriteName = isCastleLevel
       ? "ground-castle"
       : isDesertLevel
@@ -722,54 +721,6 @@ export function registerGameScene(ctx) {
       },
     });
 
-    function addFloorReinforcement() {
-      if (floorSolidDepthRows <= 0) return;
-
-      const floorTileY = level.numRows() - 1;
-      const floorSupportTopY = floorTileY * tileSize;
-      const floorSupportHeight = tileSize * floorSolidDepthRows;
-      const floorColumns = new Array(level.numColumns()).fill(false);
-      const tile = vec2(0, floorTileY);
-
-      for (let tileX = 0; tileX < level.numColumns(); tileX++) {
-        tile.x = tileX;
-        floorColumns[tileX] = level
-          .getAt(tile)
-          .some(
-            (obj) =>
-              obj &&
-              typeof obj.is === "function" &&
-              obj.is("solid") &&
-              obj.solidEnabled !== false,
-          );
-      }
-
-      // Merge contiguous columns so reinforcement is added as a few wide colliders.
-      let segmentStart = -1;
-      for (let tileX = 0; tileX <= floorColumns.length; tileX++) {
-        const isSolidColumn = tileX < floorColumns.length ? floorColumns[tileX] : false;
-
-        if (isSolidColumn) {
-          if (segmentStart === -1) segmentStart = tileX;
-          continue;
-        }
-        if (segmentStart === -1) continue;
-
-        const segmentWidth = (tileX - segmentStart) * tileSize;
-        add([
-          rect(segmentWidth, floorSupportHeight),
-          pos(segmentStart * tileSize, floorSupportTopY),
-          area(),
-          body({ isStatic: true }),
-          opacity(0),
-          "solid",
-          "floorReinforcement",
-        ]);
-        segmentStart = -1;
-      }
-    }
-
-    addFloorReinforcement();
     worldDeathY = level.levelHeight() + CONFIG.fallDeathPadding;
 
     function addGrassyLevelBackdrop() {
@@ -1132,6 +1083,11 @@ export function registerGameScene(ctx) {
 
     const playerStartPos = level.tile2Pos(playerSpawnTile).add(0, -tileSize);
 
+    const PLAYER_MAX_FALL_SPEED = tileSize * 30;
+    const PLAYER_MOVE_SUBSTEP = tileSize * 0.2;
+    const PLAYER_SOLID_EPSILON = 0.01;
+    const PLAYER_GROUND_PROBE = 2;
+
     const player = add([
       sprite("cal"),
       pos(playerStartPos),
@@ -1140,10 +1096,38 @@ export function registerGameScene(ctx) {
         scale: vec2(0.52, 0.7),
         offset: vec2(7.7, 5.4),
       }),
-      body(),
       opacity(1),
       "player",
     ]);
+
+    player.vel = vec2(0, 0);
+    player.gravityScale = 1;
+
+    const playerHitbox = (() => {
+      const box = player.worldArea().bbox();
+      return {
+        offsetX: box.pos.x - player.pos.x,
+        offsetY: box.pos.y - player.pos.y,
+        width: box.width,
+        height: box.height,
+      };
+    })();
+
+    let playerGrounded = false;
+    let playerGroundObject = null;
+    let playerGroundObjectPos = null;
+
+    player.isGrounded = () => playerGrounded;
+    player.isFalling = () => player.vel.y > 0;
+    player.isJumping = () => player.vel.y < 0;
+    player.jump = (force = CONFIG.jumpForce) => {
+      playerGrounded = false;
+      playerGroundObject = null;
+      playerGroundObjectPos = null;
+      player.vel.y = -force;
+    };
+    player.onGround = (action) => player.on("ground", action);
+    player.onHeadbutt = (action) => player.on("headbutt", action);
 
     let facing = 1;
     let velX = 0;
@@ -1400,40 +1384,352 @@ export function registerGameScene(ctx) {
       hiddenBlockTileKeys.delete(key);
 
       const normalized = vec2(Math.floor(tilePos.x), Math.floor(tilePos.y));
-      const blockPos = level.tile2Pos(normalized);
-      add([
+      const block = level.spawn([
         sprite("used-block"),
-        pos(blockPos),
         area(),
         body({ isStatic: true }),
         perfCull(),
         "solid",
         "hiddenBlock",
-      ]);
+      ], normalized);
 
       // Hidden block behaves like a head bump: reveal, stop upward motion, and keep player below.
       playSfx("bump");
-      const blockBottomY = blockPos.y + tileSize;
+      const blockBottomY = block.pos.y + tileSize;
       if (player.pos.y < blockBottomY) player.pos.y = blockBottomY;
       if (player.vel.y < 0) player.vel.y = 0;
 
       return true;
     }
 
-    function tryRevealHiddenBlockFromHead() {
-      if (hiddenBlockTileKeys.size === 0) return;
-      if (player.vel.y >= -1) return;
+    function handlePlayerHeadbutt(obj) {
+      if (ending) return;
+      if (!obj || !obj.exists()) return;
 
-      const sampleY = player.pos.y - 1;
+      if (obj.is("question")) {
+        bumpBlock(obj, obj.reward);
+        return;
+      }
+
+      if (obj.is("breakable")) {
+        if (run.power === "charged") breakBrick(obj);
+        else {
+          playSfx("bump");
+          const y0 = obj.pos.y;
+          tween(
+            y0,
+            y0 - 5,
+            0.08,
+            (y) => (obj.pos.y = y),
+            easings.easeOutQuad,
+          ).then(() =>
+            tween(y0 - 5, y0, 0.08, (y) => (obj.pos.y = y), easings.easeInQuad),
+          );
+        }
+      }
+    }
+
+    function isSolidCollider(obj, { allowCloudSemi = true } = {}) {
+      if (!obj || typeof obj.is !== "function") return false;
+      if (!obj.is("solid") || obj.solidEnabled === false) return false;
+      if (!allowCloudSemi && obj.is("cloudSemi")) return false;
+      return true;
+    }
+
+    const solidTileQuery = vec2(0, 0);
+    function solidObjectsAtTile(tileX, tileY, { allowCloudSemi = true } = {}) {
+      if (tileX < 0 || tileY < 0) return [];
+      if (tileX >= level.numColumns() || tileY >= level.numRows()) return [];
+      solidTileQuery.x = tileX;
+      solidTileQuery.y = tileY;
+      return level
+        .getAt(solidTileQuery)
+        .filter((obj) => isSolidCollider(obj, { allowCloudSemi }));
+    }
+
+    function solidBounds(obj, tileX, tileY) {
+      if (obj && typeof obj.worldArea === "function") {
+        const box = obj.worldArea().bbox();
+        return {
+          left: box.pos.x,
+          top: box.pos.y,
+          right: box.pos.x + box.width,
+          bottom: box.pos.y + box.height,
+        };
+      }
+      const tilePos = level.tile2Pos(vec2(tileX, tileY));
+      return {
+        left: tilePos.x,
+        top: tilePos.y,
+        right: tilePos.x + tileSize,
+        bottom: tilePos.y + tileSize,
+      };
+    }
+
+    function playerBoxAt(pos = player.pos) {
+      const left = pos.x + playerHitbox.offsetX;
+      const top = pos.y + playerHitbox.offsetY;
+      return {
+        left,
+        top,
+        right: left + playerHitbox.width,
+        bottom: top + playerHitbox.height,
+      };
+    }
+
+    function clearGroundedState() {
+      playerGrounded = false;
+      playerGroundObject = null;
+      playerGroundObjectPos = null;
+    }
+
+    function setGroundedState(groundObj) {
+      const wasGrounded = playerGrounded;
+      playerGrounded = true;
+      playerGroundObject = groundObj ?? null;
+      playerGroundObjectPos =
+        groundObj && groundObj.exists() && groundObj.pos ? groundObj.pos.clone() : null;
+      if (!wasGrounded) player.trigger("ground", groundObj ?? null);
+    }
+
+    function getGroundCarryDelta() {
+      if (!playerGrounded || !playerGroundObject || !playerGroundObject.exists()) {
+        clearGroundedState();
+        return vec2(0, 0);
+      }
+      if (!playerGroundObject.pos) return vec2(0, 0);
+      if (!playerGroundObjectPos) {
+        playerGroundObjectPos = playerGroundObject.pos.clone();
+        return vec2(0, 0);
+      }
+      return playerGroundObject.pos.sub(playerGroundObjectPos);
+    }
+
+    function tryRevealHiddenBlockFromHead(startPos = player.pos, endPos = player.pos) {
+      if (hiddenBlockTileKeys.size === 0) return false;
+      const dx = endPos.x - startPos.x;
+      const dy = endPos.y - startPos.y;
+      if (dy >= -1) return false;
+
+      const sweepDistance = Math.max(Math.abs(dx), Math.abs(dy));
+      const steps = Math.max(1, Math.ceil(sweepDistance / PLAYER_MOVE_SUBSTEP));
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const sampleXBase = startPos.x + dx * t;
+        const sampleY = startPos.y + dy * t - 1;
+        const sampleXs = [
+          sampleXBase + tileSize * 0.18,
+          sampleXBase + tileSize * 0.5,
+          sampleXBase + tileSize * 0.82,
+        ];
+
+        for (const sampleX of sampleXs) {
+          const tilePos = level.pos2Tile(vec2(sampleX, sampleY));
+          if (revealHiddenBlock(tilePos)) return true;
+        }
+      }
+      return false;
+    }
+
+    function resolveHorizontalStep(stepX) {
+      if (Math.abs(stepX) <= PLAYER_SOLID_EPSILON) return;
+      player.pos.x += stepX;
+
+      const box = playerBoxAt();
+      const minTileY = Math.floor((box.top + PLAYER_SOLID_EPSILON) / tileSize);
+      const maxTileY = Math.floor((box.bottom - PLAYER_SOLID_EPSILON) / tileSize);
+
+      if (stepX > 0) {
+        const tileX = Math.floor((box.right - PLAYER_SOLID_EPSILON) / tileSize);
+        let resolvedX = player.pos.x;
+        let collided = false;
+        for (let tileY = minTileY; tileY <= maxTileY; tileY++) {
+          const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
+          for (const solid of solids) {
+            const solidBox = solidBounds(solid, tileX, tileY);
+            if (box.bottom <= solidBox.top + PLAYER_SOLID_EPSILON) continue;
+            if (box.top >= solidBox.bottom - PLAYER_SOLID_EPSILON) continue;
+            if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
+            if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
+
+            const targetX =
+              solidBox.left - (playerHitbox.offsetX + playerHitbox.width) - PLAYER_SOLID_EPSILON;
+            if (targetX < resolvedX) resolvedX = targetX;
+            collided = true;
+          }
+        }
+        if (collided) {
+          player.pos.x = resolvedX;
+          if (velX > 0) velX = 0;
+        }
+        return;
+      }
+
+      const tileX = Math.floor((box.left + PLAYER_SOLID_EPSILON) / tileSize);
+      let resolvedX = player.pos.x;
+      let collided = false;
+      for (let tileY = minTileY; tileY <= maxTileY; tileY++) {
+        const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
+        for (const solid of solids) {
+          const solidBox = solidBounds(solid, tileX, tileY);
+          if (box.bottom <= solidBox.top + PLAYER_SOLID_EPSILON) continue;
+          if (box.top >= solidBox.bottom - PLAYER_SOLID_EPSILON) continue;
+          if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
+          if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
+
+          const targetX = solidBox.right - playerHitbox.offsetX + PLAYER_SOLID_EPSILON;
+          if (targetX > resolvedX) resolvedX = targetX;
+          collided = true;
+        }
+      }
+      if (collided) {
+        player.pos.x = resolvedX;
+        if (velX < 0) velX = 0;
+      }
+    }
+
+    function resolveVerticalStep(stepY) {
+      if (Math.abs(stepY) <= PLAYER_SOLID_EPSILON) {
+        return { landedObj: null, hitHead: false };
+      }
+      const startPos = player.pos.clone();
+      player.pos.y += stepY;
+
+      if (stepY < 0 && tryRevealHiddenBlockFromHead(startPos, player.pos.clone())) {
+        return { landedObj: null, hitHead: true };
+      }
+
+      const box = playerBoxAt();
+      const minTileX = Math.floor((box.left + PLAYER_SOLID_EPSILON) / tileSize);
+      const maxTileX = Math.floor((box.right - PLAYER_SOLID_EPSILON) / tileSize);
+
+      if (stepY > 0) {
+        const tileY = Math.floor((box.bottom - PLAYER_SOLID_EPSILON) / tileSize);
+        const startBox = playerBoxAt(startPos);
+        let resolvedY = player.pos.y;
+        let landedObj = null;
+
+        for (let tileX = minTileX; tileX <= maxTileX; tileX++) {
+          const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
+          for (const solid of solids) {
+            const solidBox = solidBounds(solid, tileX, tileY);
+            if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
+            if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
+            if (box.top >= solidBox.bottom - PLAYER_SOLID_EPSILON) continue;
+            if (box.bottom <= solidBox.top + PLAYER_SOLID_EPSILON) continue;
+
+            if (solid.is("cloudSemi") && startBox.bottom > solidBox.top + 1.5) continue;
+
+            const targetY =
+              solidBox.top - (playerHitbox.offsetY + playerHitbox.height) - PLAYER_SOLID_EPSILON;
+            if (targetY < resolvedY) {
+              resolvedY = targetY;
+              landedObj = solid;
+            }
+          }
+        }
+
+        if (landedObj) {
+          player.pos.y = resolvedY;
+          if (player.vel.y > 0) player.vel.y = 0;
+        }
+        return { landedObj, hitHead: false };
+      }
+
+      const tileY = Math.floor((box.top + PLAYER_SOLID_EPSILON) / tileSize);
+      let resolvedY = player.pos.y;
+      let headObj = null;
+      for (let tileX = minTileX; tileX <= maxTileX; tileX++) {
+        const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: false });
+        for (const solid of solids) {
+          const solidBox = solidBounds(solid, tileX, tileY);
+          if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
+          if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
+          if (box.bottom <= solidBox.top + PLAYER_SOLID_EPSILON) continue;
+          if (box.top >= solidBox.bottom - PLAYER_SOLID_EPSILON) continue;
+
+          const targetY = solidBox.bottom - playerHitbox.offsetY + PLAYER_SOLID_EPSILON;
+          if (targetY > resolvedY) {
+            resolvedY = targetY;
+            headObj = solid;
+          }
+        }
+      }
+
+      if (headObj) {
+        player.pos.y = resolvedY;
+        if (player.vel.y < 0) player.vel.y = 0;
+        player.trigger("headbutt", headObj);
+        return { landedObj: null, hitHead: true };
+      }
+      return { landedObj: null, hitHead: false };
+    }
+
+    function snapPlayerToGround() {
+      const box = playerBoxAt();
       const sampleXs = [
-        player.pos.x + tileSize * 0.18,
-        player.pos.x + tileSize * 0.5,
-        player.pos.x + tileSize * 0.82,
+        box.left + 1,
+        (box.left + box.right) * 0.5,
+        box.right - 1,
       ];
+      const sampleY = box.bottom + PLAYER_GROUND_PROBE;
+      let best = null;
 
       for (const sampleX of sampleXs) {
-        const tilePos = level.pos2Tile(vec2(sampleX, sampleY));
-        if (revealHiddenBlock(tilePos)) return;
+        const tileX = Math.floor(sampleX / tileSize);
+        const tileY = Math.floor(sampleY / tileSize);
+        const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
+        for (const solid of solids) {
+          const solidBox = solidBounds(solid, tileX, tileY);
+          if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
+          if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
+          if (solid.is("cloudSemi") && box.bottom > solidBox.top + 1.5) continue;
+
+          const verticalDelta = solidBox.top - box.bottom;
+          if (verticalDelta < -PLAYER_GROUND_PROBE - PLAYER_SOLID_EPSILON) continue;
+          if (verticalDelta > PLAYER_GROUND_PROBE + PLAYER_SOLID_EPSILON) continue;
+
+          const targetY =
+            solidBox.top - (playerHitbox.offsetY + playerHitbox.height) - PLAYER_SOLID_EPSILON;
+          if (!best || targetY < best.targetY) best = { obj: solid, targetY };
+        }
+      }
+
+      if (!best) return null;
+      player.pos.y = best.targetY;
+      if (player.vel.y > 0) player.vel.y = 0;
+      return best.obj;
+    }
+
+    function movePlayerKinematic(totalDx, totalDy) {
+      const distance = Math.max(Math.abs(totalDx), Math.abs(totalDy));
+      const steps = Math.max(1, Math.ceil(distance / PLAYER_MOVE_SUBSTEP));
+      const stepX = totalDx / steps;
+      let stepY = totalDy / steps;
+      let landedObj = null;
+
+      for (let i = 0; i < steps; i++) {
+        resolveHorizontalStep(stepX);
+        const verticalResult = resolveVerticalStep(stepY);
+        if (verticalResult.landedObj) {
+          landedObj = verticalResult.landedObj;
+          stepY = 0;
+          continue;
+        }
+        if (verticalResult.hitHead) stepY = 0;
+      }
+
+      if (!landedObj && player.vel.y >= -PLAYER_SOLID_EPSILON) {
+        landedObj = snapPlayerToGround();
+      }
+
+      if (landedObj) {
+        if (landedObj.is("fragileCloud") && typeof landedObj.triggerCollapse === "function") {
+          landedObj.triggerCollapse();
+        }
+        setGroundedState(landedObj);
+      } else {
+        clearGroundedState();
       }
     }
 
@@ -2232,9 +2528,17 @@ export function registerGameScene(ctx) {
         player.gravityScale = 1;
       }
 
+      const carryDelta = getGroundCarryDelta();
+      player.vel.y += sceneGravity * player.gravityScale * frameDt;
+      if (player.vel.y > PLAYER_MAX_FALL_SPEED) {
+        player.vel.y = PLAYER_MAX_FALL_SPEED;
+      }
+
       player.flipX = facing < 0;
-      player.move(velX, 0);
-      tryRevealHiddenBlockFromHead();
+      movePlayerKinematic(
+        velX * frameDt + carryDelta.x,
+        player.vel.y * frameDt + carryDelta.y,
+      );
 
       if (wingActive && player.pos.y < flightCeilingY) {
         player.pos.y = flightCeilingY;
@@ -2324,20 +2628,6 @@ export function registerGameScene(ctx) {
       vineTouchUntil = time() + 0.08;
     });
 
-    // One-way clouds: pass through from below, but land when falling onto top.
-    player.onBeforePhysicsResolve((col) => {
-      if (ending || !isCloudLevel || !col || !col.target || !col.target.is("cloudSemi"))
-        return;
-      const targetTop = col.target.pos.y;
-      const playerCenterY = player.pos.y + tileSize * 0.5;
-      const movingUp = player.vel.y < -1;
-      const mostlyBelowTop = playerCenterY >= targetTop + 2;
-
-      // Only ignore collision while rising from below a cloud tile.
-      // Any downward (or neutral) motion stays fully solid from above.
-      if (movingUp && mostlyBelowTop) col.preventResolution();
-    });
-
     player.onCollide("fragileCloud", (fragile, col) => {
       if (ending || !fragile || !fragile.exists()) return;
       if (!col) return;
@@ -2360,30 +2650,7 @@ export function registerGameScene(ctx) {
 
     // Question blocks + bricks (headbutt).
     player.onHeadbutt((obj) => {
-      if (ending) return;
-      if (!obj || !obj.exists()) return;
-
-      if (obj.is("question")) {
-        bumpBlock(obj, obj.reward);
-        return;
-      }
-
-      if (obj.is("breakable")) {
-        if (run.power === "charged") breakBrick(obj);
-        else {
-          playSfx("bump");
-          const y0 = obj.pos.y;
-          tween(
-            y0,
-            y0 - 5,
-            0.08,
-            (y) => (obj.pos.y = y),
-            easings.easeOutQuad,
-          ).then(() =>
-            tween(y0 - 5, y0, 0.08, (y) => (obj.pos.y = y), easings.easeInQuad),
-          );
-        }
-      }
+      handlePlayerHeadbutt(obj);
     });
 
     const solidQueryTile = vec2(0, 0);
