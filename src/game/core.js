@@ -524,7 +524,7 @@ export function createGameCore() {
       buildMap: buildMoon1Level,
       timeLimit: CONFIG.timeLimit + 45,
       nextLevelId: null,
-      music: "overworld",
+      music: "overworld-space",
       levelStyle: "space",
       gravity: CONFIG.gravityMoon,
       airControlMultiplier: CONFIG.moonAirAccelScale,

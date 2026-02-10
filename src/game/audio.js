@@ -1,13 +1,17 @@
 export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
+  const MASTER_ON_GAIN = 1.0;
+  const BGM_BUS_GAIN = 0.27;
+  const SFX_BUS_GAIN = 0.75;
+
   const audioBus = (() => {
     const ctx = audioCtx;
     const master = ctx.createGain();
     const bgm = ctx.createGain();
     const sfx = ctx.createGain();
 
-    master.gain.value = settings.audio ? 0.9 : 0.0;
-    bgm.gain.value = 0.22;
-    sfx.gain.value = 0.65;
+    master.gain.value = settings.audio ? MASTER_ON_GAIN : 0.0;
+    bgm.gain.value = BGM_BUS_GAIN;
+    sfx.gain.value = SFX_BUS_GAIN;
 
     bgm.connect(master);
     sfx.connect(master);
@@ -639,6 +643,48 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     return midi;
   }
 
+  function toSpaceColor(midi) {
+    if (midi == null) return N;
+    const pc = ((midi % 12) + 12) % 12;
+    // Lydian color: raise scale degree 4 (F -> F#) for a floating feel.
+    if (pc === 5) return midi + 1;
+    return midi;
+  }
+
+  function toSpaceMelody(midi, stepIndex) {
+    if (midi == null) return N;
+    let note = toSpaceColor(midi);
+    const phraseStep = stepIndex % 32;
+    // Subtle octave blooms at phrase pivots.
+    if ((phraseStep === 0 || phraseStep === 16 || phraseStep === 24) && note <= 84) {
+      note += 12;
+    }
+    return note;
+  }
+
+  function toSpaceHarmony(midi, stepIndex) {
+    if (midi == null) return N;
+    // Thin, high-register bed instead of constant block movement.
+    if (stepIndex % 2 === 1) return N;
+    return toSpaceColor(midi) + 12;
+  }
+
+  function toSpaceBass(midi, stepIndex) {
+    if (midi == null) return N;
+    // Quarter-note bass pulse keeps gravity low and uncluttered.
+    if (stepIndex % 4 !== 0) return N;
+    return toSpaceColor(midi);
+  }
+
+  function toSpaceArp(midi, stepIndex) {
+    if (midi == null) return N;
+    if (stepIndex % 2 === 1) return N;
+    let note = toSpaceColor(midi) + 12;
+    // Add occasional fifth bloom for shimmer.
+    if (stepIndex % 16 === 0) note += 7;
+    return note;
+  }
+
   const SPECIAL_BGM_TRACKS = Object.freeze({
     "overworld-castle": Object.freeze({
       bpm: 136,
@@ -664,6 +710,26 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       durFactor: 0.96,
       accentStrength: 0.32,
       groove: "tense",
+    }),
+    "overworld-space": Object.freeze({
+      bpm: 154,
+      stepsPerBeat: BGM_TRACKS.overworld.stepsPerBeat,
+      melody: BGM_TRACKS.overworld.melody.map((m, i) => toSpaceMelody(m, i)),
+      harmony: BGM_TRACKS.overworld.harmony.map((m, i) => toSpaceHarmony(m, i)),
+      bass: BGM_TRACKS.overworld.bass.map((m, i) => toSpaceBass(m, i)),
+      arp: BGM_TRACKS.overworld.arp.map((m, i) => toSpaceArp(m, i)),
+      melodyType: "triangle",
+      harmonyType: "sine",
+      bassType: "triangle",
+      arpType: "sine",
+      melodyGain: 0.036,
+      harmonyGain: 0.011,
+      bassGain: 0.024,
+      arpGain: 0.008,
+      durFactor: 1.02,
+      arpDurFactor: 0.74,
+      accentStrength: 0.22,
+      groove: "space",
     }),
   });
 
@@ -875,6 +941,21 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
           if (beatStep === 0 || beatStep === 5) scheduleKick(t, 0.021);
           if (beatStep === 4) scheduleSnare(t, 0.012);
           if (beatStep % 2 === 1) scheduleHat(t, beatStep === 7 ? 0.005 : 0.0036);
+        } else if (track.groove === "space") {
+          // Light pulse with gentle air swells for moon/space levels.
+          if (beatStep === 0) scheduleKick(t, 0.0165);
+          if (beatStep === 4) scheduleSnare(t, 0.0095);
+          if (beatStep === 3 || beatStep === 7) scheduleHat(t, 0.0033);
+          if (beatStep === 0) {
+            scheduleNoise({
+              time: t,
+              dur: stepDur * 2.4,
+              gain: 0.0024,
+              type: "bandpass",
+              freq: 2200,
+              q: 0.55,
+            });
+          }
         } else {
           // Classic platformer groove: kick on 1/3, snare on 2/4, hats on 8ths.
           if (beatStep === 0 || beatStep === 4) scheduleKick(t);
@@ -953,7 +1034,7 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
 
     if (settings.audio) ensureAudioReady();
 
-    rampGainTo(audioBus.master.gain, settings.audio ? 0.9 : 0.0, 0.04);
+    rampGainTo(audioBus.master.gain, settings.audio ? MASTER_ON_GAIN : 0.0, 0.04);
     bgm.refresh();
 
     playSfx("ui");
