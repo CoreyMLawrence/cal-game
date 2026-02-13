@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <radialGradient id="sandCoreGlow" cx="50%" cy="44%" r="62%">
+      <stop offset="0" stop-color="#fff5c8" stop-opacity="0.94" />
+      <stop offset="0.55" stop-color="#f5ba58" stop-opacity="0.68" />
+      <stop offset="1" stop-color="#2a1a08" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="sandRing" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff6dc" />
+      <stop offset="0.45" stop-color="#f6cf7b" />
+      <stop offset="1" stop-color="#b27a2b" />
+    </linearGradient>
+    <linearGradient id="sandGem" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff8dd" />
+      <stop offset="0.34" stop-color="#f6df8c" />
+      <stop offset="0.72" stop-color="#ebb55a" />
+      <stop offset="1" stop-color="#b8772a" />
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="32" height="32" fill="#000" opacity="0" />
+  <circle cx="16" cy="16" r="14.2" fill="url(#sandCoreGlow)" />
+
+  <circle cx="16" cy="16" r="9.8" fill="#2a1a0e" stroke="#120a04" stroke-width="1.6" />
+  <circle cx="16" cy="16" r="8.4" fill="none" stroke="url(#sandRing)" stroke-width="2.1" />
+
+  <path d="M16 8.6 L22 12 L22 18.9 L16 22.3 L10 18.9 L10 12 Z" fill="url(#sandGem)" stroke="#5c3812" stroke-width="1" />
+  <path d="M16 10.5 L20.2 12.9 L20.2 18 L16 20.4 L11.8 18 L11.8 12.9 Z" fill="#fff0c8" opacity="0.32" />
+
+  <path d="M16 10.5 V20.4" stroke="#805324" stroke-width="0.85" opacity="0.72" />
+  <path d="M11.8 12.9 L20.2 18" stroke="#805324" stroke-width="0.85" opacity="0.42" />
+  <path d="M20.2 12.9 L11.8 18" stroke="#805324" stroke-width="0.85" opacity="0.42" />
+
+  <path d="M8.8 7.7 L10 10.1 L12.5 10.4 L10.7 12.2 L11.1 14.7 L8.8 13.5 L6.5 14.7 L6.9 12.2 L5.1 10.4 L7.6 10.1 Z" fill="#ffe59d" stroke="#fff0c7" stroke-width="0.45" opacity="0.9" />
+  <path d="M24.9 6 L25.8 7.8 L27.8 8.1 L26.3 9.6 L26.6 11.6 L24.9 10.7 L23.2 11.6 L23.5 9.6 L22 8.1 L24 7.8 Z" fill="#ffe59d" stroke="#fff0c7" stroke-width="0.4" opacity="0.82" />
+  <path d="M24.9 21.1 L25.8 22.9 L27.8 23.2 L26.3 24.7 L26.6 26.7 L24.9 25.8 L23.2 26.7 L23.5 24.7 L22 23.2 L24 22.9 Z" fill="#ffe59d" stroke="#fff0c7" stroke-width="0.4" opacity="0.86" />
+</svg>

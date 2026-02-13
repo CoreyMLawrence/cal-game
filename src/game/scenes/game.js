@@ -96,6 +96,30 @@ export function registerGameScene(ctx) {
       typeof levelSpec.forgeDurationSeconds === "number"
         ? levelSpec.forgeDurationSeconds
         : CONFIG.forgeDurationSeconds;
+    const levelSandstormDurationSeconds =
+      typeof levelSpec.sandstormDurationSeconds === "number"
+        ? levelSpec.sandstormDurationSeconds
+        : CONFIG.sandstormDurationSeconds;
+    const levelHorizontalPlatformRange = isCloudLevel
+      ? 68
+      : isDesertLevel
+        ? 28
+        : 56;
+    const levelHorizontalPlatformSpeed = isCloudLevel
+      ? 1.12
+      : isDesertLevel
+        ? 0.84
+        : 1.05;
+    const levelVerticalPlatformRange = isCloudLevel
+      ? 66
+      : isDesertLevel
+        ? 24
+        : 52;
+    const levelVerticalPlatformSpeed = isCloudLevel
+      ? 1.0
+      : isDesertLevel
+        ? 0.78
+        : 1.0;
     const groundSpriteName = isCastleLevel
       ? "ground-castle"
       : isDesertLevel
@@ -375,6 +399,7 @@ export function registerGameScene(ctx) {
         apply() {
           run.wingSecondsLeft = 0;
           run.forgeSecondsLeft = 0;
+          run.sandstormSecondsLeft = 0;
           setPower("charged", player.pos.add(tileSize / 2, 0));
           setInvincible(CONFIG.powerInvincibleSeconds);
         },
@@ -386,6 +411,7 @@ export function registerGameScene(ctx) {
         textColor: rgb(170, 235, 255),
         apply() {
           run.forgeSecondsLeft = 0;
+          run.sandstormSecondsLeft = 0;
           run.wingSecondsLeft = levelWingDurationSeconds;
           setPower("winged", player.pos.add(tileSize / 2, 0));
           setInvincible(CONFIG.powerInvincibleSeconds);
@@ -398,8 +424,22 @@ export function registerGameScene(ctx) {
         textColor: rgb(255, 176, 120),
         apply() {
           run.wingSecondsLeft = 0;
+          run.sandstormSecondsLeft = 0;
           run.forgeSecondsLeft = levelForgeDurationSeconds;
           setPower("forged", player.pos.add(tileSize / 2, 0));
+          setInvincible(CONFIG.powerInvincibleSeconds);
+        },
+      }),
+      sandstorm: Object.freeze({
+        sprite: "sand-core",
+        power: "sandstorm",
+        text: `SANDSTORM +${Math.max(1, Math.floor(levelSandstormDurationSeconds))}s`,
+        textColor: rgb(243, 208, 114),
+        apply() {
+          run.wingSecondsLeft = 0;
+          run.forgeSecondsLeft = 0;
+          run.sandstormSecondsLeft = levelSandstormDurationSeconds;
+          setPower("sandstorm", player.pos.add(tileSize / 2, 0));
           setInvincible(CONFIG.powerInvincibleSeconds);
         },
       }),
@@ -410,7 +450,12 @@ export function registerGameScene(ctx) {
     }
 
     function questionBlockTile(reward) {
-      const spriteName = reward === "forge" ? "question-forge" : "question";
+      const spriteName =
+        reward === "forge"
+          ? "question-forge"
+          : reward === "sandstorm"
+            ? "question-sand"
+            : "question";
       return [
         sprite(spriteName),
         area(),
@@ -518,6 +563,14 @@ export function registerGameScene(ctx) {
       ];
     }
 
+    function desertObeliskTile() {
+      return [
+        sprite("desert-obelisk"),
+        perfCull(),
+        z(-2),
+      ];
+    }
+
     function astroHelmetComponent() {
       return {
         id: "astroHelmet",
@@ -562,12 +615,24 @@ export function registerGameScene(ctx) {
       });
     }
 
+    function destroyEnemyStackFollowers(enemy) {
+      if (!enemy || !Array.isArray(enemy.stackFollowers)) return;
+      for (const follower of enemy.stackFollowers) {
+        if (!follower || (typeof follower.exists === "function" && !follower.exists())) {
+          continue;
+        }
+        destroy(follower);
+      }
+      enemy.stackFollowers = [];
+    }
+
     function enemyTile(spriteName, opts = {}, tilePos = null) {
       const phase =
         opts.flightPhase ??
         (tilePos ? tilePos.x * 0.31 + tilePos.y * 0.47 : rand(0, Math.PI * 2));
       const helmetComponents = opts.astro ? [astroHelmetComponent()] : [];
       const astroTags = opts.astro ? ["astroEnemy"] : [];
+      const stackHeight = Math.max(1, Math.floor(opts.stackHeight ?? 1));
       if (opts.flying) {
         return [
           sprite(spriteName),
@@ -638,6 +703,46 @@ export function registerGameScene(ctx) {
           dir: -1,
           speed: opts.speed,
           smart: opts.smart ?? true,
+          stackHeight,
+          stackFollowers: [],
+          topSprites: Array.isArray(opts.topSprites) ? opts.topSprites : [],
+          add() {
+            if (this.stackHeight <= 1) return;
+            destroyEnemyStackFollowers(this);
+            for (let i = 1; i < this.stackHeight; i++) {
+              const topSprite = this.topSprites[i - 1] ?? spriteName;
+              const follower = add([
+                sprite(topSprite),
+                pos(this.pos.x, this.pos.y - i * tileSize),
+                enemyDamageArea(),
+                perfCull({ margin: tileSize * 10 }),
+                "enemyHitbox",
+                "danger",
+                z(5 + i),
+                {
+                  leader: this,
+                  stackOwner: this,
+                  yOffset: i * tileSize,
+                  update() {
+                    const leader = this.leader;
+                    if (!leader || !leader.exists() || leader.defeated) {
+                      destroy(this);
+                      return;
+                    }
+                    this.pos.x = leader.pos.x;
+                    this.pos.y = leader.pos.y - this.yOffset;
+                    this.flipX = leader.flipX;
+                    this.hidden = !!leader.hidden;
+                    this.opacity = leader.opacity;
+                  },
+                },
+              ]);
+              this.stackFollowers.push(follower);
+            }
+          },
+          destroy() {
+            destroyEnemyStackFollowers(this);
+          },
         },
       ];
     }
@@ -670,8 +775,8 @@ export function registerGameScene(ctx) {
             tilePos,
           ),
           movingPlatform({
-            range: isCloudLevel ? 68 : 56,
-            speed: isCloudLevel ? 1.12 : 1.05,
+            range: levelHorizontalPlatformRange,
+            speed: levelHorizontalPlatformSpeed,
           }),
         ],
         "|": (tilePos) => [
@@ -682,8 +787,8 @@ export function registerGameScene(ctx) {
           ),
           movingPlatform({
             axis: "y",
-            range: isCloudLevel ? 66 : 52,
-            speed: 1.0,
+            range: levelVerticalPlatformRange,
+            speed: levelVerticalPlatformSpeed,
             phase: tilePos.x * 0.33 + tilePos.y * 0.21,
           }),
         ],
@@ -697,8 +802,10 @@ export function registerGameScene(ctx) {
         "*": () => questionBlockTile("battery"),
         W: () => questionBlockTile("wing"),
         M: () => questionBlockTile("forge"),
+        Z: () => questionBlockTile("sandstorm"),
         S: () => questionBlockTile("supercoin"),
         O: () => superCoinTile(),
+        I: () => desertObeliskTile(),
         h: (tilePos) => {
           hiddenBlockTileKeys.add(hiddenTileKey(tilePos));
           return null;
@@ -765,6 +872,13 @@ export function registerGameScene(ctx) {
           enemyTile("robot-pink", {
             speed: CONFIG.enemySpeed - 14,
             smart: true,
+          }),
+        t: () =>
+          enemyTile("robot-blue", {
+            speed: CONFIG.enemySpeed - 4,
+            smart: true,
+            stackHeight: 3,
+            topSprites: ["robot-red", "robot-pink"],
           }),
       },
     });
@@ -1250,6 +1364,7 @@ export function registerGameScene(ctx) {
       run.power = "normal";
       run.wingSecondsLeft = 0;
       run.forgeSecondsLeft = 0;
+      run.sandstormSecondsLeft = 0;
       playSfx("hurt");
       shake(6);
 
@@ -1915,6 +2030,8 @@ export function registerGameScene(ctx) {
     let timeLeft = levelSpec.timeLimit ?? CONFIG.timeLimit;
     let dustTimer = 0;
     let forgeSparkTimer = 0;
+    let sandstormPulseTimer = 0;
+    let sandstormSparkTimer = 0;
     let startLocked = true;
     let pauseActive = false;
     let bossPowerDropTimer = rand(5.5, 8.5);
@@ -1922,6 +2039,7 @@ export function registerGameScene(ctx) {
     const HUD_COLOR_CHARGED = rgb(52, 199, 89);
     const HUD_COLOR_WINGED = rgb(170, 235, 255);
     const HUD_COLOR_FORGED = rgb(255, 156, 94);
+    const HUD_COLOR_SANDSTORM = rgb(243, 208, 114);
     let hudPowerMode = "normal";
     let auraMode = "none";
 
@@ -1935,6 +2053,7 @@ export function registerGameScene(ctx) {
       if (mode === "charged") hudPower.color = HUD_COLOR_CHARGED;
       else if (mode === "winged") hudPower.color = HUD_COLOR_WINGED;
       else if (mode === "forged") hudPower.color = HUD_COLOR_FORGED;
+      else if (mode === "sandstorm") hudPower.color = HUD_COLOR_SANDSTORM;
       else hudPower.color = HUD_COLOR_NEUTRAL;
     }
 
@@ -1954,6 +2073,11 @@ export function registerGameScene(ctx) {
       if (mode === "forged") {
         aura.color = HUD_COLOR_FORGED;
         aura.outline = { width: 2, color: HUD_COLOR_FORGED };
+        return;
+      }
+      if (mode === "sandstorm") {
+        aura.color = HUD_COLOR_SANDSTORM;
+        aura.outline = { width: 2, color: HUD_COLOR_SANDSTORM };
       }
     }
 
@@ -2222,8 +2346,11 @@ export function registerGameScene(ctx) {
     function addEnemyStompZone(enemy) {
       if (!enemy || !enemy.exists()) return;
       destroyEnemyStompZone(enemy);
+      const enemyStackHeight = Math.max(1, Math.floor(enemy.stackHeight ?? 1));
+      const stompTopOffset =
+        ENEMY_STOMP_ZONE_OFFSET_Y - (enemyStackHeight - 1) * tileSize;
       enemy.stompZone = add([
-        pos(enemy.pos.x, enemy.pos.y + ENEMY_STOMP_ZONE_OFFSET_Y),
+        pos(enemy.pos.x, enemy.pos.y + stompTopOffset),
         rect(tileSize, ENEMY_STOMP_ZONE_HEIGHT),
         anchor("topleft"),
         area(),
@@ -2237,7 +2364,14 @@ export function registerGameScene(ctx) {
               return;
             }
             this.pos.x = this.owner.pos.x;
-            this.pos.y = this.owner.pos.y + ENEMY_STOMP_ZONE_OFFSET_Y;
+            const stackHeight = Math.max(
+              1,
+              Math.floor(this.owner.stackHeight ?? 1),
+            );
+            this.pos.y =
+              this.owner.pos.y +
+              ENEMY_STOMP_ZONE_OFFSET_Y -
+              (stackHeight - 1) * tileSize;
           },
         },
       ]);
@@ -2260,9 +2394,16 @@ export function registerGameScene(ctx) {
       }
       return {
         left: enemy.pos.x,
-        top: enemy.pos.y + ENEMY_STOMP_ZONE_OFFSET_Y,
+        top:
+          enemy.pos.y +
+          ENEMY_STOMP_ZONE_OFFSET_Y -
+          (Math.max(1, Math.floor(enemy.stackHeight ?? 1)) - 1) * tileSize,
         right: enemy.pos.x + tileSize,
-        bottom: enemy.pos.y + ENEMY_STOMP_ZONE_OFFSET_Y + ENEMY_STOMP_ZONE_HEIGHT,
+        bottom:
+          enemy.pos.y +
+          ENEMY_STOMP_ZONE_OFFSET_Y -
+          (Math.max(1, Math.floor(enemy.stackHeight ?? 1)) - 1) * tileSize +
+          ENEMY_STOMP_ZONE_HEIGHT,
       };
     }
 
@@ -2297,6 +2438,7 @@ export function registerGameScene(ctx) {
       enemy.unuse("flyingEnemy");
       enemy.paused = true;
       enemy.use(scale(1, 0.25));
+      destroyEnemyStackFollowers(enemy);
       wait(0.18, () => {
         if (enemy.exists()) destroy(enemy);
       });
@@ -2570,6 +2712,8 @@ export function registerGameScene(ctx) {
       );
       let wingActive = run.power === "winged" && run.wingSecondsLeft > 0;
       let forgeActive = run.power === "forged" && run.forgeSecondsLeft > 0;
+      let sandstormActive =
+        run.power === "sandstorm" && run.sandstormSecondsLeft > 0;
       if (run.power === "charged") {
         setHudText(hudPower, "POWER CHARGED");
         setHudPowerMode("charged");
@@ -2585,6 +2729,12 @@ export function registerGameScene(ctx) {
           `POWER FORGE ${Math.max(0, Math.ceil(run.forgeSecondsLeft))}s`,
         );
         setHudPowerMode("forged");
+      } else if (sandstormActive) {
+        setHudText(
+          hudPower,
+          `POWER SAND ${Math.max(0, Math.ceil(run.sandstormSecondsLeft))}s`,
+        );
+        setHudPowerMode("sandstorm");
       } else {
         setHudText(hudPower, "POWER —");
         setHudPowerMode("normal");
@@ -2619,6 +2769,13 @@ export function registerGameScene(ctx) {
         const auraScale = 1 + pulse * 0.052;
         aura.scale.x = auraScale;
         aura.scale.y = auraScale;
+      } else if (sandstormActive) {
+        setAuraMode("sandstorm");
+        const pulse = Math.sin(now * 12.5);
+        aura.opacity = 0.26 + pulse * 0.05;
+        const auraScale = 1 + pulse * 0.06;
+        aura.scale.x = auraScale;
+        aura.scale.y = auraScale;
       } else {
         aura.opacity = 0;
         aura.scale.x = 1;
@@ -2642,6 +2799,28 @@ export function registerGameScene(ctx) {
         }
       } else {
         forgeSparkTimer = 0;
+      }
+
+      if (sandstormActive) {
+        sandstormSparkTimer -= frameDt;
+        if (sandstormSparkTimer <= 0) {
+          sandstormSparkTimer = 0.05 + rand(0, 0.06);
+          const swirlPos = player.pos.add(
+            tileSize * 0.5 + rand(-14, 14),
+            tileSize * 0.52 + rand(-10, 8),
+          );
+          add([
+            circle(rand(1.3, 2.5)),
+            pos(swirlPos),
+            color(rand(222, 255), rand(176, 222), rand(96, 136)),
+            opacity(rand(0.48, 0.82)),
+            lifespan(0.32, { fade: 0.2 }),
+            move(vec2(rand(-0.8, 0.8), rand(-0.8, 0.8)), rand(36, 88)),
+            z(1995),
+          ]);
+        }
+      } else {
+        sandstormSparkTimer = 0;
       }
 
       if (isInvincible())
@@ -2674,6 +2853,7 @@ export function registerGameScene(ctx) {
         if (run.wingSecondsLeft <= 0) {
           run.power = "normal";
           run.forgeSecondsLeft = 0;
+          run.sandstormSecondsLeft = 0;
           playSfx("powerdown");
           addFloatingText(
             "WINGS OUT",
@@ -2686,6 +2866,7 @@ export function registerGameScene(ctx) {
         if (run.forgeSecondsLeft <= 0) {
           run.power = "normal";
           run.forgeSecondsLeft = 0;
+          run.sandstormSecondsLeft = 0;
           playSfx("forge-expire");
           addFloatingText(
             "CORE OUT",
@@ -2693,10 +2874,44 @@ export function registerGameScene(ctx) {
             rgb(255, 156, 94),
           );
         }
+      } else if (run.power === "sandstorm") {
+        run.sandstormSecondsLeft = Math.max(0, run.sandstormSecondsLeft - frameDt);
+        if (run.sandstormSecondsLeft <= 0) {
+          run.power = "normal";
+          run.sandstormSecondsLeft = 0;
+          playSfx("sandstorm-expire");
+          addFloatingText(
+            "STORM OUT",
+            player.pos.add(tileSize / 2, -10),
+            rgb(243, 208, 114),
+          );
+        }
       }
 
       wingActive = run.power === "winged" && run.wingSecondsLeft > 0;
       forgeActive = run.power === "forged" && run.forgeSecondsLeft > 0;
+      sandstormActive = run.power === "sandstorm" && run.sandstormSecondsLeft > 0;
+      if (sandstormActive) {
+        sandstormPulseTimer -= frameDt;
+        if (sandstormPulseTimer <= 0) {
+          sandstormPulseTimer = 0.11;
+          const pulseCenter = player.pos.add(tileSize * 0.5, tileSize * 0.5);
+          const pulseRadius = tileSize * 1.68;
+          for (const enemy of get("enemy")) {
+            if (!enemy || !enemy.exists() || enemy.defeated) continue;
+            const enemyCenter = enemy.pos.add(
+              tileSize * 0.5,
+              tileSize * (0.5 - (Math.max(1, Math.floor(enemy.stackHeight ?? 1)) - 1) * 0.5),
+            );
+            const dx = pulseCenter.x - enemyCenter.x;
+            const dy = pulseCenter.y - enemyCenter.y;
+            if (Math.hypot(dx, dy) > pulseRadius) continue;
+            squashEnemy(enemy);
+          }
+        }
+      } else {
+        sandstormPulseTimer = 0;
+      }
       const leftDown = anyInputDown(INPUT.left);
       const rightDown = anyInputDown(INPUT.right);
       const runDown = anyInputDown(INPUT.run);
@@ -2884,7 +3099,7 @@ export function registerGameScene(ctx) {
       const spec = powerupSpec(kind);
       destroy(p);
       spec.apply();
-      if (kind === "wing" || kind === "forge") {
+      if (kind === "wing" || kind === "forge" || kind === "sandstorm") {
         addFloatingText(spec.text, player.pos.add(tileSize / 2, -12), spec.textColor);
       }
     });
@@ -2963,6 +3178,7 @@ export function registerGameScene(ctx) {
         enemy.flipX = enemy.dir > 0;
         if (enemy.pos.y > worldDeathY) {
           destroyEnemyStompZone(enemy);
+          destroyEnemyStackFollowers(enemy);
           destroy(enemy);
         }
       });
@@ -2980,9 +3196,24 @@ export function registerGameScene(ctx) {
       }
     });
 
-    player.onCollide("enemy", (enemy, col) => {
+    function resolveEnemyOwner(obj) {
+      if (!obj || (typeof obj.exists === "function" && !obj.exists())) return null;
+      const owner = obj.stackOwner ?? obj;
+      if (!owner || (typeof owner.exists === "function" && !owner.exists())) return null;
+      return owner;
+    }
+
+    function handleEnemyBodyCollision(enemyObj, col) {
       if (ending) return;
-      if (!enemy || !enemy.exists() || enemy.defeated) return;
+      const enemy = resolveEnemyOwner(enemyObj);
+      if (!enemy || enemy.defeated) return;
+
+      const sandstormActive =
+        run.power === "sandstorm" && run.sandstormSecondsLeft > 0;
+      if (sandstormActive) {
+        squashEnemy(enemy);
+        return;
+      }
 
       if (isPlayerStompingEnemy(enemy, col)) {
         squashEnemy(enemy);
@@ -2991,6 +3222,14 @@ export function registerGameScene(ctx) {
       }
 
       takeHit("enemy");
+    }
+
+    player.onCollide("enemy", (enemy, col) => {
+      handleEnemyBodyCollision(enemy, col);
+    });
+
+    player.onCollide("enemyHitbox", (enemyHitbox, col) => {
+      handleEnemyBodyCollision(enemyHitbox, col);
     });
 
     player.onCollide("hazard", () => {

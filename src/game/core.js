@@ -1,5 +1,6 @@
 import {
   buildBoss1Level,
+  buildBoss2Level,
   buildBoss5Level,
   buildCastle1Level,
   buildCastle5_1Level,
@@ -9,6 +10,10 @@ import {
   buildCastle5_5Level,
   buildCloud1Level,
   buildDesert1Level,
+  buildDesert2Level,
+  buildDesert3Level,
+  buildDesert4Level,
+  buildDesert5Level,
   buildLevel1,
   buildLevel2,
   buildMoon1Level,
@@ -66,6 +71,7 @@ export function createGameCore() {
     bossStompInvincibleSeconds: 2.0,
     wingDurationSeconds: 30,
     forgeDurationSeconds: 8,
+    sandstormDurationSeconds: 10,
     wingGravityScale: 0.34,
     wingRiseSpeed: 390,
     wingGlideFallSpeed: 88,
@@ -354,12 +360,15 @@ export function createGameCore() {
     blockMoon: "assets/block-moon.svg",
     question: "assets/question.svg",
     questionForge: "assets/question-forge.svg",
+    questionSand: "assets/question-sand.svg",
     usedBlock: "assets/used-block.svg",
     coin: "assets/coin.svg",
     superCoin: "assets/super-coin.svg",
     battery: "assets/battery.svg",
     wing: "assets/wing.svg",
     forgeCore: "assets/forge-core.svg",
+    sandCore: "assets/sand-core.svg",
+    desertObelisk: "assets/desert-obelisk.svg",
     vine: "assets/vine.svg",
     spring: "assets/spring.svg",
     heart: "assets/heart.svg",
@@ -386,12 +395,15 @@ export function createGameCore() {
   loadSprite("block-moon", ASSETS.blockMoon);
   loadSprite("question", ASSETS.question);
   loadSprite("question-forge", ASSETS.questionForge);
+  loadSprite("question-sand", ASSETS.questionSand);
   loadSprite("used-block", ASSETS.usedBlock);
   loadSprite("coin", ASSETS.coin);
   loadSprite("super-coin", ASSETS.superCoin);
   loadSprite("battery", ASSETS.battery);
   loadSprite("wing", ASSETS.wing);
   loadSprite("forge-core", ASSETS.forgeCore);
+  loadSprite("sand-core", ASSETS.sandCore);
+  loadSprite("desert-obelisk", ASSETS.desertObelisk);
   loadSprite("vine", ASSETS.vine);
   loadSprite("spring", ASSETS.spring);
   loadSprite("heart", ASSETS.heart);
@@ -502,8 +514,69 @@ export function createGameCore() {
       title: "SUNSCORCH RUN",
       buildMap: buildDesert1Level,
       timeLimit: CONFIG.timeLimit + 25,
+      nextLevelId: "desert2",
+      music: "overworld-desert",
+      tutorialSteps: null,
+    },
+    desert2: {
+      id: "desert2",
+      title: "CARAVAN STRIDE",
+      buildMap: buildDesert2Level,
+      timeLimit: CONFIG.timeLimit + 30,
+      nextLevelId: "desert3",
+      music: "overworld-desert",
+      sandstormDurationSeconds: 10,
+      tutorialSteps: [
+        {
+          x: 22 * CONFIG.tileSize,
+          text: "Sand Core blocks (Z) unleash a sandstorm that shreds nearby robots.",
+        },
+        {
+          x: 62 * CONFIG.tileSize,
+          text: "Tall robot stacks (t) move as one unit. Stomp the top to clear all 3.",
+        },
+      ],
+    },
+    desert3: {
+      id: "desert3",
+      title: "SUNKEN RUINS",
+      buildMap: buildDesert3Level,
+      timeLimit: CONFIG.timeLimit + 35,
+      nextLevelId: "desert4",
+      music: "overworld-desert",
+      sandstormDurationSeconds: 10,
+      tutorialSteps: null,
+    },
+    desert4: {
+      id: "desert4",
+      title: "DUSTSTORM TRIALS",
+      buildMap: buildDesert4Level,
+      timeLimit: CONFIG.timeLimit + 42,
+      nextLevelId: "desert5",
+      music: "overworld-desert",
+      sandstormDurationSeconds: 10,
+      tutorialSteps: null,
+    },
+    desert5: {
+      id: "desert5",
+      title: "SOLAR CITADEL GATE",
+      buildMap: buildDesert5Level,
+      timeLimit: CONFIG.timeLimit + 48,
+      nextLevelId: "boss2",
+      music: "overworld-desert",
+      sandstormDurationSeconds: 10,
+      doorTargetLevelId: "boss2",
+      tutorialSteps: null,
+    },
+    boss2: {
+      id: "boss2",
+      title: "DUNE OVERSEER",
+      buildMap: buildBoss2Level,
+      timeLimit: CONFIG.timeLimit + 56,
       nextLevelId: "cloud1",
       music: "overworld-desert",
+      isBossLevel: true,
+      sandstormDurationSeconds: 10,
       tutorialSteps: null,
     },
     cloud1: {
@@ -635,9 +708,10 @@ export function createGameCore() {
     lives: CONFIG.startingLives,
     coins: 0,
     score: 0,
-    power: "normal", // "normal" | "charged" | "winged" | "forged"
+    power: "normal", // "normal" | "charged" | "winged" | "forged" | "sandstorm"
     wingSecondsLeft: 0,
     forgeSecondsLeft: 0,
+    sandstormSecondsLeft: 0,
   };
 
   function resetRun() {
@@ -647,6 +721,7 @@ export function createGameCore() {
     run.power = "normal";
     run.wingSecondsLeft = 0;
     run.forgeSecondsLeft = 0;
+    run.sandstormSecondsLeft = 0;
   }
 
   function addFloatingText(message, worldPos, col = rgb(255, 255, 255)) {
@@ -691,26 +766,38 @@ export function createGameCore() {
     run.power = power;
     if (power === "charged") {
       run.forgeSecondsLeft = 0;
+      run.sandstormSecondsLeft = 0;
       playSfx("power");
       if (worldPos) addFloatingText("CHARGED!", worldPos, rgb(52, 199, 89));
       return;
     }
     if (power === "winged") {
       run.forgeSecondsLeft = 0;
+      run.sandstormSecondsLeft = 0;
       playSfx("power");
       if (worldPos) addFloatingText("WINGED!", worldPos, rgb(170, 235, 255));
       return;
     }
     if (power === "forged") {
       run.wingSecondsLeft = 0;
+      run.sandstormSecondsLeft = 0;
       playSfx("forge");
       if (worldPos) addFloatingText("FORGE CORE!", worldPos, rgb(255, 156, 94));
+      return;
+    }
+    if (power === "sandstorm") {
+      run.wingSecondsLeft = 0;
+      run.forgeSecondsLeft = 0;
+      playSfx("sandstorm");
+      if (worldPos) addFloatingText("SANDSTORM!", worldPos, rgb(243, 208, 114));
       return;
     }
     if (power === "normal") {
       run.wingSecondsLeft = 0;
       run.forgeSecondsLeft = 0;
+      run.sandstormSecondsLeft = 0;
       if (previousPower === "forged") playSfx("forge-expire");
+      else if (previousPower === "sandstorm") playSfx("sandstorm-expire");
       else playSfx("powerdown");
       if (worldPos) addFloatingText("POWER DOWN", worldPos, rgb(255, 100, 100));
     } else {

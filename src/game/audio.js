@@ -198,6 +198,35 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
           gain: 0.021,
         });
         break;
+      case "sandstorm":
+        playJingle([
+          { t: 0.0, f: 294, d: 0.08, type: "triangle", g: 0.032 },
+          { t: 0.08, f: 392, d: 0.08, type: "triangle", g: 0.034 },
+          { t: 0.16, f: 523, d: 0.1, type: "square", g: 0.036 },
+          { t: 0.28, f: 659, d: 0.13, type: "square", g: 0.04 },
+        ]);
+        playTone({
+          type: "sawtooth",
+          freq: 190,
+          freqEnd: 520,
+          duration: 0.24,
+          gain: 0.022,
+        });
+        break;
+      case "sandstorm-expire":
+        playJingle([
+          { t: 0.0, f: 523, d: 0.07, type: "square", g: 0.03 },
+          { t: 0.1, f: 440, d: 0.08, type: "triangle", g: 0.028 },
+          { t: 0.2, f: 330, d: 0.11, type: "triangle", g: 0.03 },
+        ]);
+        playTone({
+          type: "triangle",
+          freq: 360,
+          freqEnd: 180,
+          duration: 0.13,
+          gain: 0.02,
+        });
+        break;
       case "powerdown":
         playJingle([
           { t: 0.0, f: 784, d: 0.08, type: "triangle", g: 0.04 },
