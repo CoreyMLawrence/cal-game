@@ -76,6 +76,23 @@ export function createWorldData({ rgb, vec2 }) {
       levelDot: rgb(190, 214, 248),
       textDark: rgb(236, 242, 255),
     }),
+    castle: Object.freeze({
+      id: "castle",
+      mapStyle: "castle",
+      levelStyle: "castle",
+      skyTop: rgb(24, 24, 34),
+      skyBottom: rgb(36, 24, 22),
+      lavaGlow: rgb(190, 76, 36),
+      stoneLight: rgb(94, 98, 112),
+      stoneDark: rgb(60, 64, 78),
+      pathActive: rgb(255, 220, 190),
+      pathInactive: rgb(124, 104, 98),
+      nodeOutline: rgb(34, 34, 44),
+      nodeShadow: rgb(0, 0, 0),
+      trainingDot: rgb(255, 214, 10),
+      levelDot: rgb(232, 140, 94),
+      textDark: rgb(246, 232, 220),
+    }),
   });
 
   const WORLD_MAPS = Object.freeze({
@@ -185,6 +202,89 @@ export function createWorldData({ rgb, vec2 }) {
         }),
       ]),
       connections: Object.freeze([]),
+    }),
+    world5: Object.freeze({
+      id: "world5",
+      title: "WORLD 5 — INFERNAL STRONGHOLD",
+      themeId: "castle",
+      startLevelId: "castle5_1",
+      nodes: Object.freeze([
+        Object.freeze({
+          levelId: "castle5_1",
+          label: "1",
+          kind: "level",
+          pos: vec2(160, 326),
+          requires: ["level-4-1"],
+          dotColor: WORLD_THEMES.castle.levelDot,
+        }),
+        Object.freeze({
+          levelId: "castle5_2",
+          label: "2",
+          kind: "level",
+          pos: vec2(334, 286),
+          requires: ["castle5_1"],
+          dotColor: WORLD_THEMES.castle.levelDot,
+        }),
+        Object.freeze({
+          levelId: "castle5_3",
+          label: "3",
+          kind: "level",
+          pos: vec2(506, 250),
+          requires: ["castle5_2"],
+          dotColor: WORLD_THEMES.castle.levelDot,
+        }),
+        Object.freeze({
+          levelId: "castle5_4",
+          label: "4",
+          kind: "level",
+          pos: vec2(678, 214),
+          requires: ["castle5_3"],
+          dotColor: WORLD_THEMES.castle.levelDot,
+        }),
+        Object.freeze({
+          levelId: "castle5_5",
+          label: "5",
+          kind: "level",
+          pos: vec2(836, 176),
+          requires: ["castle5_4"],
+          dotColor: WORLD_THEMES.castle.levelDot,
+        }),
+        Object.freeze({
+          levelId: "boss5",
+          label: "C",
+          kind: "level",
+          pos: vec2(914, 120),
+          requires: ["castle5_5"],
+          dotColor: rgb(245, 236, 224),
+        }),
+      ]),
+      connections: Object.freeze([
+        Object.freeze({
+          fromLevelId: "castle5_1",
+          toLevelId: "castle5_2",
+          control: vec2(250, 278),
+        }),
+        Object.freeze({
+          fromLevelId: "castle5_2",
+          toLevelId: "castle5_3",
+          control: vec2(420, 248),
+        }),
+        Object.freeze({
+          fromLevelId: "castle5_3",
+          toLevelId: "castle5_4",
+          control: vec2(592, 214),
+        }),
+        Object.freeze({
+          fromLevelId: "castle5_4",
+          toLevelId: "castle5_5",
+          control: vec2(764, 176),
+        }),
+        Object.freeze({
+          fromLevelId: "castle5_5",
+          toLevelId: "boss5",
+          control: vec2(890, 144),
+        }),
+      ]),
     }),
   });
 

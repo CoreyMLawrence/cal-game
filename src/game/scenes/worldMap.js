@@ -46,6 +46,8 @@ export function registerWorldMapScene(ctx) {
           ? "overworld-desert"
           : theme.id === "cloud"
             ? "overworld-cloud"
+            : theme.id === "castle"
+              ? "overworld-castle"
             : "overworld";
     bgm.requestTrack(worldMapTrack);
 
@@ -499,6 +501,54 @@ export function registerWorldMapScene(ctx) {
       });
     }
 
+    function drawCastleMapBackground() {
+      drawRect({
+        pos: vec2(0, 0),
+        width: width(),
+        height: height(),
+        gradient: [theme.skyTop, theme.skyBottom],
+        fixed: true,
+      });
+
+      drawRect({
+        pos: vec2(0, height() - 154),
+        width: width(),
+        height: 154,
+        gradient: [rgb(90, 34, 24), rgb(46, 20, 18)],
+        fixed: true,
+      });
+
+      for (let x = -80; x < width() + 160; x += 170) {
+        const towerH = 150 + Math.sin(time() * 0.5 + x * 0.01) * 10;
+        drawRect({
+          pos: vec2(x, 390 - towerH),
+          width: 64,
+          height: towerH,
+          color: theme.stoneDark,
+          opacity: 0.84,
+          fixed: true,
+        });
+        drawTriangle({
+          p1: vec2(x, 390 - towerH),
+          p2: vec2(x + 32, 350 - towerH),
+          p3: vec2(x + 64, 390 - towerH),
+          color: theme.stoneLight,
+          opacity: 0.84,
+          fixed: true,
+        });
+      }
+
+      for (let i = 0; i < 26; i++) {
+        drawCircle({
+          pos: vec2(i * 40 + ((time() * 24) % 40), 430 + Math.sin(time() * 2 + i) * 12),
+          radius: 3 + (i % 3),
+          color: theme.lavaGlow,
+          opacity: 0.28,
+          fixed: true,
+        });
+      }
+    }
+
     function drawConnections() {
       for (const c of world.connections) {
         const from = getNode(c.fromLevelId);
@@ -542,6 +592,7 @@ export function registerWorldMapScene(ctx) {
       if (theme.mapStyle === "desert") drawDesertMapBackground();
       else if (theme.mapStyle === "cloud") drawCloudMapBackground();
       else if (theme.mapStyle === "space") drawSpaceMapBackground();
+      else if (theme.mapStyle === "castle") drawCastleMapBackground();
       else drawGrassyMapBackground();
       drawConnections();
     });
