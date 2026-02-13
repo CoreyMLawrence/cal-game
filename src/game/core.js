@@ -65,6 +65,7 @@ export function createGameCore() {
     hurtInvincibleSeconds: 1.4,
     bossStompInvincibleSeconds: 2.0,
     wingDurationSeconds: 30,
+    forgeDurationSeconds: 8,
     wingGravityScale: 0.34,
     wingRiseSpeed: 390,
     wingGlideFallSpeed: 88,
@@ -352,11 +353,13 @@ export function createGameCore() {
     blockCastle: "assets/block-castle.svg",
     blockMoon: "assets/block-moon.svg",
     question: "assets/question.svg",
+    questionForge: "assets/question-forge.svg",
     usedBlock: "assets/used-block.svg",
     coin: "assets/coin.svg",
     superCoin: "assets/super-coin.svg",
     battery: "assets/battery.svg",
     wing: "assets/wing.svg",
+    forgeCore: "assets/forge-core.svg",
     vine: "assets/vine.svg",
     spring: "assets/spring.svg",
     heart: "assets/heart.svg",
@@ -382,11 +385,13 @@ export function createGameCore() {
   loadSprite("block-castle", ASSETS.blockCastle);
   loadSprite("block-moon", ASSETS.blockMoon);
   loadSprite("question", ASSETS.question);
+  loadSprite("question-forge", ASSETS.questionForge);
   loadSprite("used-block", ASSETS.usedBlock);
   loadSprite("coin", ASSETS.coin);
   loadSprite("super-coin", ASSETS.superCoin);
   loadSprite("battery", ASSETS.battery);
   loadSprite("wing", ASSETS.wing);
+  loadSprite("forge-core", ASSETS.forgeCore);
   loadSprite("vine", ASSETS.vine);
   loadSprite("spring", ASSETS.spring);
   loadSprite("heart", ASSETS.heart);
@@ -550,6 +555,8 @@ export function createGameCore() {
       nextLevelId: "castle5_2",
       music: "overworld-castle",
       levelStyle: "castle",
+      wingDurationSeconds: 5,
+      forgeDurationSeconds: 8,
       tutorialSteps: null,
     },
     castle5_2: {
@@ -560,6 +567,8 @@ export function createGameCore() {
       nextLevelId: "castle5_3",
       music: "overworld-castle",
       levelStyle: "castle",
+      wingDurationSeconds: 5,
+      forgeDurationSeconds: 8,
       tutorialSteps: null,
     },
     castle5_3: {
@@ -570,6 +579,8 @@ export function createGameCore() {
       nextLevelId: "castle5_4",
       music: "overworld-castle",
       levelStyle: "castle",
+      wingDurationSeconds: 5,
+      forgeDurationSeconds: 8,
       tutorialSteps: null,
     },
     castle5_4: {
@@ -580,6 +591,8 @@ export function createGameCore() {
       nextLevelId: "castle5_5",
       music: "overworld-castle",
       levelStyle: "castle",
+      wingDurationSeconds: 5,
+      forgeDurationSeconds: 8,
       tutorialSteps: null,
     },
     castle5_5: {
@@ -590,6 +603,8 @@ export function createGameCore() {
       nextLevelId: "boss5",
       music: "overworld-castle",
       levelStyle: "castle",
+      wingDurationSeconds: 5,
+      forgeDurationSeconds: 8,
       doorTargetLevelId: "boss5",
       tutorialSteps: null,
     },
@@ -620,8 +635,9 @@ export function createGameCore() {
     lives: CONFIG.startingLives,
     coins: 0,
     score: 0,
-    power: "normal", // "normal" | "charged" | "winged"
+    power: "normal", // "normal" | "charged" | "winged" | "forged"
     wingSecondsLeft: 0,
+    forgeSecondsLeft: 0,
   };
 
   function resetRun() {
@@ -630,6 +646,7 @@ export function createGameCore() {
     run.score = 0;
     run.power = "normal";
     run.wingSecondsLeft = 0;
+    run.forgeSecondsLeft = 0;
   }
 
   function addFloatingText(message, worldPos, col = rgb(255, 255, 255)) {
@@ -670,20 +687,31 @@ export function createGameCore() {
 
   function setPower(power, worldPos) {
     if (run.power === power) return;
+    const previousPower = run.power;
     run.power = power;
     if (power === "charged") {
+      run.forgeSecondsLeft = 0;
       playSfx("power");
       if (worldPos) addFloatingText("CHARGED!", worldPos, rgb(52, 199, 89));
       return;
     }
     if (power === "winged") {
+      run.forgeSecondsLeft = 0;
       playSfx("power");
       if (worldPos) addFloatingText("WINGED!", worldPos, rgb(170, 235, 255));
       return;
     }
+    if (power === "forged") {
+      run.wingSecondsLeft = 0;
+      playSfx("forge");
+      if (worldPos) addFloatingText("FORGE CORE!", worldPos, rgb(255, 156, 94));
+      return;
+    }
     if (power === "normal") {
       run.wingSecondsLeft = 0;
-      playSfx("powerdown");
+      run.forgeSecondsLeft = 0;
+      if (previousPower === "forged") playSfx("forge-expire");
+      else playSfx("powerdown");
       if (worldPos) addFloatingText("POWER DOWN", worldPos, rgb(255, 100, 100));
     } else {
       playSfx("ui");

@@ -169,6 +169,35 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
           { t: 0.2, f: 784, d: 0.1, type: "triangle", g: 0.045 },
         ]);
         break;
+      case "forge":
+        playJingle([
+          { t: 0.0, f: 330, d: 0.06, type: "sawtooth", g: 0.034 },
+          { t: 0.06, f: 494, d: 0.07, type: "sawtooth", g: 0.036 },
+          { t: 0.13, f: 659, d: 0.08, type: "triangle", g: 0.038 },
+          { t: 0.22, f: 988, d: 0.13, type: "triangle", g: 0.043 },
+        ]);
+        playTone({
+          type: "square",
+          freq: 1420,
+          freqEnd: 920,
+          duration: 0.12,
+          gain: 0.022,
+        });
+        break;
+      case "forge-expire":
+        playJingle([
+          { t: 0.0, f: 554, d: 0.08, type: "sawtooth", g: 0.03 },
+          { t: 0.1, f: 440, d: 0.08, type: "sawtooth", g: 0.028 },
+          { t: 0.2, f: 330, d: 0.12, type: "triangle", g: 0.03 },
+        ]);
+        playTone({
+          type: "triangle",
+          freq: 300,
+          freqEnd: 170,
+          duration: 0.13,
+          gain: 0.021,
+        });
+        break;
       case "powerdown":
         playJingle([
           { t: 0.0, f: 784, d: 0.08, type: "triangle", g: 0.04 },

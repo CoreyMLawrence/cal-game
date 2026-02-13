@@ -88,6 +88,14 @@ export function registerGameScene(ctx) {
           ? CONFIG.moonAirDecelScale
           : 1;
     const jumpJetFx = levelSpec.jumpJetFx === true || isSpaceLevel;
+    const levelWingDurationSeconds =
+      typeof levelSpec.wingDurationSeconds === "number"
+        ? levelSpec.wingDurationSeconds
+        : CONFIG.wingDurationSeconds;
+    const levelForgeDurationSeconds =
+      typeof levelSpec.forgeDurationSeconds === "number"
+        ? levelSpec.forgeDurationSeconds
+        : CONFIG.forgeDurationSeconds;
     const groundSpriteName = isCastleLevel
       ? "ground-castle"
       : isDesertLevel
@@ -366,6 +374,7 @@ export function registerGameScene(ctx) {
         textColor: rgb(52, 199, 89),
         apply() {
           run.wingSecondsLeft = 0;
+          run.forgeSecondsLeft = 0;
           setPower("charged", player.pos.add(tileSize / 2, 0));
           setInvincible(CONFIG.powerInvincibleSeconds);
         },
@@ -373,11 +382,24 @@ export function registerGameScene(ctx) {
       wing: Object.freeze({
         sprite: "wing",
         power: "winged",
-        text: "FLIGHT +30s",
+        text: `FLIGHT +${Math.max(1, Math.floor(levelWingDurationSeconds))}s`,
         textColor: rgb(170, 235, 255),
         apply() {
-          run.wingSecondsLeft = CONFIG.wingDurationSeconds;
+          run.forgeSecondsLeft = 0;
+          run.wingSecondsLeft = levelWingDurationSeconds;
           setPower("winged", player.pos.add(tileSize / 2, 0));
+          setInvincible(CONFIG.powerInvincibleSeconds);
+        },
+      }),
+      forge: Object.freeze({
+        sprite: "forge-core",
+        power: "forged",
+        text: `FORGE CORE +${Math.max(1, Math.floor(levelForgeDurationSeconds))}s`,
+        textColor: rgb(255, 176, 120),
+        apply() {
+          run.wingSecondsLeft = 0;
+          run.forgeSecondsLeft = levelForgeDurationSeconds;
+          setPower("forged", player.pos.add(tileSize / 2, 0));
           setInvincible(CONFIG.powerInvincibleSeconds);
         },
       }),
@@ -388,8 +410,9 @@ export function registerGameScene(ctx) {
     }
 
     function questionBlockTile(reward) {
+      const spriteName = reward === "forge" ? "question-forge" : "question";
       return [
-        sprite("question"),
+        sprite(spriteName),
         area(),
         body({ isStatic: true }),
         "solid",
@@ -673,6 +696,7 @@ export function registerGameScene(ctx) {
         "?": () => questionBlockTile("coin"),
         "*": () => questionBlockTile("battery"),
         W: () => questionBlockTile("wing"),
+        M: () => questionBlockTile("forge"),
         S: () => questionBlockTile("supercoin"),
         O: () => superCoinTile(),
         h: (tilePos) => {
@@ -1225,6 +1249,7 @@ export function registerGameScene(ctx) {
       run.lives -= 1;
       run.power = "normal";
       run.wingSecondsLeft = 0;
+      run.forgeSecondsLeft = 0;
       playSfx("hurt");
       shake(6);
 
@@ -1889,12 +1914,14 @@ export function registerGameScene(ctx) {
 
     let timeLeft = levelSpec.timeLimit ?? CONFIG.timeLimit;
     let dustTimer = 0;
+    let forgeSparkTimer = 0;
     let startLocked = true;
     let pauseActive = false;
     let bossPowerDropTimer = rand(5.5, 8.5);
     const HUD_COLOR_NEUTRAL = rgb(255, 255, 255);
     const HUD_COLOR_CHARGED = rgb(52, 199, 89);
     const HUD_COLOR_WINGED = rgb(170, 235, 255);
+    const HUD_COLOR_FORGED = rgb(255, 156, 94);
     let hudPowerMode = "normal";
     let auraMode = "none";
 
@@ -1907,6 +1934,7 @@ export function registerGameScene(ctx) {
       hudPowerMode = mode;
       if (mode === "charged") hudPower.color = HUD_COLOR_CHARGED;
       else if (mode === "winged") hudPower.color = HUD_COLOR_WINGED;
+      else if (mode === "forged") hudPower.color = HUD_COLOR_FORGED;
       else hudPower.color = HUD_COLOR_NEUTRAL;
     }
 
@@ -1921,6 +1949,11 @@ export function registerGameScene(ctx) {
       if (mode === "winged") {
         aura.color = HUD_COLOR_WINGED;
         aura.outline = { width: 2, color: HUD_COLOR_WINGED };
+        return;
+      }
+      if (mode === "forged") {
+        aura.color = HUD_COLOR_FORGED;
+        aura.outline = { width: 2, color: HUD_COLOR_FORGED };
       }
     }
 
@@ -2536,6 +2569,7 @@ export function registerGameScene(ctx) {
         `TIME ${Math.max(0, Math.floor(timeLeft)).toString().padStart(3, "0")}`,
       );
       let wingActive = run.power === "winged" && run.wingSecondsLeft > 0;
+      let forgeActive = run.power === "forged" && run.forgeSecondsLeft > 0;
       if (run.power === "charged") {
         setHudText(hudPower, "POWER CHARGED");
         setHudPowerMode("charged");
@@ -2545,6 +2579,12 @@ export function registerGameScene(ctx) {
           `POWER WING ${Math.max(0, Math.ceil(run.wingSecondsLeft))}s`,
         );
         setHudPowerMode("winged");
+      } else if (forgeActive) {
+        setHudText(
+          hudPower,
+          `POWER FORGE ${Math.max(0, Math.ceil(run.forgeSecondsLeft))}s`,
+        );
+        setHudPowerMode("forged");
       } else {
         setHudText(hudPower, "POWER —");
         setHudPowerMode("normal");
@@ -2572,10 +2612,36 @@ export function registerGameScene(ctx) {
         const auraScale = 1 + pulse * 0.06;
         aura.scale.x = auraScale;
         aura.scale.y = auraScale;
+      } else if (forgeActive) {
+        setAuraMode("forged");
+        const pulse = Math.sin(now * 9.5);
+        aura.opacity = 0.24 + pulse * 0.045;
+        const auraScale = 1 + pulse * 0.052;
+        aura.scale.x = auraScale;
+        aura.scale.y = auraScale;
       } else {
         aura.opacity = 0;
         aura.scale.x = 1;
         aura.scale.y = 1;
+      }
+
+      if (forgeActive) {
+        forgeSparkTimer -= frameDt;
+        if (forgeSparkTimer <= 0) {
+          forgeSparkTimer = 0.07 + rand(0, 0.05);
+          const sparkStart = player.pos.add(tileSize * 0.5 + rand(-9, 9), tileSize * 0.45);
+          add([
+            circle(rand(1.1, 2.3)),
+            pos(sparkStart),
+            color(255, rand(140, 196), rand(84, 118)),
+            opacity(rand(0.55, 0.9)),
+            lifespan(0.28, { fade: 0.2 }),
+            move(vec2(rand(-0.35, 0.35), -1), rand(42, 86)),
+            z(1995),
+          ]);
+        }
+      } else {
+        forgeSparkTimer = 0;
       }
 
       if (isInvincible())
@@ -2607,6 +2673,7 @@ export function registerGameScene(ctx) {
         run.wingSecondsLeft = Math.max(0, run.wingSecondsLeft - frameDt);
         if (run.wingSecondsLeft <= 0) {
           run.power = "normal";
+          run.forgeSecondsLeft = 0;
           playSfx("powerdown");
           addFloatingText(
             "WINGS OUT",
@@ -2614,9 +2681,22 @@ export function registerGameScene(ctx) {
             rgb(200, 220, 255),
           );
         }
+      } else if (run.power === "forged") {
+        run.forgeSecondsLeft = Math.max(0, run.forgeSecondsLeft - frameDt);
+        if (run.forgeSecondsLeft <= 0) {
+          run.power = "normal";
+          run.forgeSecondsLeft = 0;
+          playSfx("forge-expire");
+          addFloatingText(
+            "CORE OUT",
+            player.pos.add(tileSize / 2, -10),
+            rgb(255, 156, 94),
+          );
+        }
       }
 
       wingActive = run.power === "winged" && run.wingSecondsLeft > 0;
+      forgeActive = run.power === "forged" && run.forgeSecondsLeft > 0;
       const leftDown = anyInputDown(INPUT.left);
       const rightDown = anyInputDown(INPUT.right);
       const runDown = anyInputDown(INPUT.run);
@@ -2804,7 +2884,7 @@ export function registerGameScene(ctx) {
       const spec = powerupSpec(kind);
       destroy(p);
       spec.apply();
-      if (kind === "wing") {
+      if (kind === "wing" || kind === "forge") {
         addFloatingText(spec.text, player.pos.add(tileSize / 2, -12), spec.textColor);
       }
     });
@@ -2915,6 +2995,7 @@ export function registerGameScene(ctx) {
 
     player.onCollide("hazard", () => {
       if (ending) return;
+      if (run.power === "forged" && run.forgeSecondsLeft > 0) return;
       takeHit("hazard");
     });
 

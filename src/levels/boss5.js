@@ -2,11 +2,12 @@ import { createLevelGrid, fillGround } from "./common.js";
 
 export function buildBoss5Level() {
   const cols = 128;
-  const rows = 17;
+  const rows = 18;
   const groundY = rows - 1;
   const { put, toMap } = createLevelGrid(cols, rows);
 
-  fillGround(put, cols, groundY);
+  const floorY = groundY - 1;
+  fillGround(put, cols, floorY);
 
   // Castle roof shell.
   for (let x = 0; x < cols; x++) put(x, 1, "#");
@@ -23,11 +24,18 @@ export function buildBoss5Level() {
   }
 
   // Lava-cut floor pockets force repositioning during boss dives.
-  for (let x = 18; x <= 24; x++) put(x, groundY, "L");
-  for (let x = 40; x <= 46; x++) put(x, groundY, "L");
-  for (let x = 62; x <= 68; x++) put(x, groundY, "L");
-  for (let x = 84; x <= 90; x++) put(x, groundY, "L");
-  for (let x = 104; x <= 110; x++) put(x, groundY, "L");
+  function lavaPocket(start, end) {
+    for (let x = start; x <= end; x++) {
+      // Keep a solid block layer under lava for Forge Core traversal.
+      put(x, groundY, "#");
+      put(x, groundY - 1, "L");
+    }
+  }
+  lavaPocket(18, 24);
+  lavaPocket(40, 46);
+  lavaPocket(62, 68);
+  lavaPocket(84, 90);
+  lavaPocket(104, 110);
 
   // Jump-assist platforms for stomp setups.
   for (let x = 14; x <= 20; x++) put(x, 12, "#");

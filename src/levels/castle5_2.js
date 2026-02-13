@@ -2,15 +2,18 @@ import { createLevelGrid, fillGround } from "./common.js";
 
 export function buildCastle5_2Level() {
   const cols = 244;
-  const rows = 17;
+  const rows = 18;
   const groundY = rows - 1;
   const { put, toMap } = createLevelGrid(cols, rows);
 
-  fillGround(put, cols, groundY);
+  const floorY = groundY - 1;
+  fillGround(put, cols, floorY);
 
   function lavaPool(start, width, depth = 1) {
     for (let x = start; x < start + width; x++) {
-      for (let d = 0; d < depth; d++) put(x, groundY - d, "L");
+      // Keep a solid floor under lava so Forge Core can traverse through it.
+      put(x, groundY, "#");
+      for (let d = 0; d < depth; d++) put(x, groundY - 1 - d, "L");
     }
   }
 
@@ -34,81 +37,91 @@ export function buildCastle5_2Level() {
   put(11, 12, "*");
   put(12, 12, "?");
   coinLine(8, 18, 11);
-  put(18, rows - 2, "r");
-  put(23, rows - 2, "b");
+  put(18, rows - 3, "r");
+  put(23, rows - 3, "b");
 
-  // Foundry basin one: deep magma and moving chains.
-  lavaPool(28, 22, 2);
+  // Foundry basin one.
+  lavaPool(28, 23, 1);
   platform(28, 33, 13);
-  put(36, 12, "~");
-  platform(40, 44, 11);
-  put(48, 12, "|");
-  platform(52, 56, 11);
-  platform(58, 61, 12);
-  coinLine(28, 61, 10);
+  put(36, 13, "~");
+  platform(39, 44, 12);
+  put(47, 12, "~");
+  platform(50, 56, 12);
+  coinLine(28, 56, 11);
   put(35, 11, "F");
   put(46, 10, "F");
-  put(58, rows - 2, "p");
+  put(55, rows - 3, "p");
 
   // Furnace corridor.
-  platform(68, 82, 12);
-  platform(86, 96, 11);
+  platform(60, 72, 12);
+  platform(75, 84, 11);
+  put(78, 10, "S");
+  put(86, rows - 3, "^");
+  platform(88, 96, 11);
+  put(90, 10, "W");
   lavaPool(98, 5, 1);
   platform(98, 102, 13);
-  put(90, 10, "W");
-  coinLine(68, 104, 10);
-  put(70, rows - 2, "r");
-  put(78, rows - 2, "b");
-  put(90, rows - 2, "p");
-  put(96, rows - 2, "r");
+  platform(104, 108, 12);
+  coinLine(60, 108, 10);
+  put(70, rows - 3, "r");
+  put(79, rows - 3, "b");
+  put(93, rows - 3, "p");
+  put(104, rows - 3, "r");
   put(74, 11, "F");
   put(88, 10, "F");
 
-  // Foundry basin two: longer mover rhythm with safe stones.
-  lavaPool(110, 20, 2);
-  lavaPool(134, 17, 2);
-  platform(110, 114, 13);
-  put(118, 12, "~");
-  put(122, 11, "|");
-  platform(125, 128, 10);
-  put(132, 12, "~");
-  platform(136, 140, 11);
-  put(144, 12, "|");
-  platform(148, 152, 11);
-  platform(155, 158, 12);
-  coinLine(110, 158, 9);
-  put(126, 9, "r");
-  put(138, 10, "p");
-  put(156, rows - 2, "b");
+  // Foundry basin two.
+  lavaPool(112, 12, 1);
+  lavaPool(127, 12, 1);
+  lavaPool(142, 10, 1);
+  platform(112, 117, 13);
+  put(120, 13, "~");
+  platform(124, 126, 12);
+  platform(127, 132, 12);
+  put(130, 12, "~");
+  platform(135, 141, 11);
+  put(144, 11, "|");
+  platform(147, 151, 11);
+  platform(154, 160, 12);
+  put(157, 10, "M");
+  coinLine(112, 160, 10);
+  put(126, 10, "r");
+  put(138, rows - 3, "p");
+  put(156, rows - 3, "b");
   put(120, 10, "F");
   put(146, 10, "F");
 
   // Crucible lift lane.
-  lavaPool(164, 18, 1);
-  put(166, 12, "|");
-  put(170, 11, "~");
-  put(174, 10, "|");
-  put(178, 11, "~");
-  platform(182, 186, 10);
-  platform(188, 194, 12);
-  put(196, rows - 2, "^");
-  coinLine(164, 198, 9);
-  put(184, rows - 2, "r");
-  put(190, rows - 2, "b");
-  put(198, rows - 2, "p");
+  lavaPool(164, 8, 1);
+  lavaPool(175, 8, 1);
+  lavaPool(186, 7, 1);
+  platform(164, 168, 13);
+  put(171, 13, "~");
+  platform(173, 174, 12);
+  put(177, 12, "|");
+  platform(180, 182, 12);
+  put(186, 12, "~");
+  platform(189, 193, 11);
+  put(196, 11, "~");
+  platform(199, 203, 12);
+  put(205, rows - 3, "^");
+  coinLine(164, 205, 10);
+  put(184, rows - 3, "r");
+  put(191, rows - 3, "b");
+  put(201, rows - 3, "p");
 
   // Exit tower.
   const stairBaseX = cols - 36;
   for (let i = 0; i < 8; i++) {
-    for (let y = 0; y <= i; y++) put(stairBaseX + i, rows - 2 - y, "#");
+    for (let y = 0; y <= i; y++) put(stairBaseX + i, rows - 3 - y, "#");
   }
-  put(cols - 32, rows - 2, "r");
-  put(cols - 26, rows - 2, "b");
-  put(cols - 19, rows - 2, "p");
+  put(cols - 32, rows - 3, "r");
+  put(cols - 26, rows - 3, "b");
+  put(cols - 19, rows - 3, "p");
   put(cols - 14, 9, "F");
   coinLine(cols - 34, cols - 10, 11);
 
-  put(cols - 6, rows - 2, "D");
+  put(cols - 6, rows - 3, "D");
 
   return toMap();
 }

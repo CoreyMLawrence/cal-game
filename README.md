@@ -31,7 +31,8 @@ DualShock / standard gamepad:
 ## Gameplay notes
 
 - `*` blocks can drop a **battery** that makes Cal **CHARGED** (break `B` bricks + take 1 hit safely).
-- `W` blocks can drop **wings** that let Cal fly for 30 seconds.
+- `W` blocks can drop **wings** that let Cal fly (30s normally, 5s in World 5 castles).
+- `M` blocks can drop a **Forge Core** that grants brief lava / fire protection.
 - In cloud levels, red robots (`r`) fly in sweeping patterns.
 - Background music is generated with the Web Audio API (no music files needed).
 - Best score/time are saved in your browser via `localStorage`.
@@ -49,6 +50,7 @@ DualShock / standard gamepad:
   - `?` = question block (coin)
   - `*` = question block (power-up)
   - `W` = question block (wing power-up)
+  - `M` = question block (Forge Core power-up)
   - `~` = moving platform
   - `|` = vertical moving platform
   - `c` = crumble cloud platform
@@ -73,7 +75,7 @@ All art is loaded from `assets/`. To change the look, just replace the files (ke
 
 - `assets/cal.svg` (player) — recommended: 32×32
 - `assets/robot-red.svg`, `assets/robot-blue.svg`, `assets/robot-pink.svg` — recommended: 32×32
-- `assets/ground.svg`, `assets/block.svg`, `assets/question.svg`, `assets/used-block.svg` — recommended: 32×32
+- `assets/ground.svg`, `assets/block.svg`, `assets/question.svg`, `assets/question-forge.svg`, `assets/used-block.svg` — recommended: 32×32
 - `assets/coin.svg`, `assets/battery.svg`, `assets/wing.svg`, `assets/spring.svg`, `assets/vine.svg` — recommended: 32×32
 - `assets/heart.svg` — recommended: 16×16 (or 32×32 is fine too)
 - `assets/ufo-boss.svg` — recommended: 64×48
