@@ -62,9 +62,11 @@ export function buildMoon1Level() {
   ];
   for (const [x, y] of hoverBots) put(x, y, "f");
 
-  // Astro-robots on stable moon rock.
+  // Astro-robots on stable moon rock and asteroid platforms.
   const astroBots = [
     [19, groundY - 1],
+    [65, 9],
+    [110, 8],
     [166, groundY - 1],
     [182, groundY - 1],
   ];

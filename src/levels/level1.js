@@ -56,17 +56,39 @@ export function buildLevel1() {
   for (let x = 76; x <= 86; x++) put(x, 12, "=");
   for (let x = 77; x <= 85; x++) putCoin(x, 11);
 
-  // Enemy placements.
-  put(18, rows - 2, "r");
-  put(33, rows - 2, "b");
-  put(58, rows - 2, "p");
-  put(90, rows - 2, "r");
-  put(112, rows - 2, "b");
-  put(128, rows - 2, "p");
+  // Stepping stones over late stretch
+  for (let x = 110; x <= 113; x++) put(x, 13, "#");
+  for (let x = 118; x <= 122; x++) put(x, 11, "=");
+  for (let x = 118; x <= 122; x += 2) putCoin(x, 10);
 
-  // Mid/late coin lines (kept within allowed height range).
-  for (let x = 92; x <= 108; x += 2) putCoin(x, 14);
-  for (let x = 116; x <= 126; x += 2) putCoin(x, 13);
+  // Strategic enemy placements: platform guards, double-stomp combos, and paced challenges.
+  const enemies = [
+    // Intro single stomp
+    [16, rows - 2, "r"],
+    // Ledge 2 patrol guard
+    [38, 11, "p"],
+    // Ground guard after pit 1
+    [46, rows - 2, "r"],
+    // Reflex test after moving platform pit 2
+    [60, rows - 2, "b"],
+    // Ledge patrol
+    [68, 12, "r"],
+    // High grassy ledge guard
+    [83, 11, "p"],
+    // Double stomp combo sequence
+    [104, rows - 2, "r"],
+    [107, rows - 2, "r"],
+    // High stepping stone guard
+    [120, 10, "p"],
+    // Pre-staircase stack tower and runner
+    [132, rows - 2, "t"],
+    [138, rows - 2, "b"],
+  ];
+  for (const [x, y, kind] of enemies) put(x, y, kind);
+
+  // Mid/late coin lines.
+  for (let x = 92; x <= 102; x += 2) putCoin(x, 14);
+  for (let x = 124; x <= 130; x += 2) putCoin(x, 13);
 
   // End-of-level set piece.
   put(cols - 6, 10, "!");

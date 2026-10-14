@@ -44,7 +44,7 @@ export function buildDesert2Level() {
   platform(43, 47, 12, "~");
   platform(50, 53, 11);
   coinLine(28, 53, 11);
-  put(38, rows - 2, "r");
+  put(37, 11, "r");
   put(46, rows - 2, "p");
 
   // Ruin plateau + first stack walkers.
@@ -54,6 +54,7 @@ export function buildDesert2Level() {
   put(61, 12, "I");
   put(75, 12, "I");
   coinLine(60, 76, 9);
+  put(66, 9, "p");
   put(66, rows - 2, "t");
   put(73, rows - 2, "b");
 
@@ -63,8 +64,8 @@ export function buildDesert2Level() {
   put(96, rows - 2, "^");
   platform(99, 107, 12);
   coinLine(82, 108, 11);
-  put(90, rows - 2, "r");
-  put(104, rows - 2, "p");
+  put(90, 11, "r");
+  put(103, 11, "p");
 
   // Sun-baked ruins with vertical movers.
   platform(112, 120, 13, "#");
@@ -76,7 +77,7 @@ export function buildDesert2Level() {
   put(138, 9, "Z");
   coinLine(112, 143, 9);
   put(118, rows - 2, "t");
-  put(133, rows - 2, "r");
+  put(131, 9, "r");
   put(141, rows - 2, "b");
 
   // End lane: mixed movers and pressure.
@@ -87,7 +88,8 @@ export function buildDesert2Level() {
   platform(172, 176, 13, "~");
   platform(180, 186, 12);
   coinLine(146, 186, 11);
-  put(154, rows - 2, "p");
+  put(154, 11, "b");
+  put(183, 11, "p");
   put(166, rows - 2, "t");
   put(183, rows - 2, "b");
 

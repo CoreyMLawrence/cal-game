@@ -61,22 +61,29 @@ export function buildDesert1Level() {
     for (let y = 0; y <= i; y++) put(stairBaseX + i, rows - 2 - y, "#");
   }
 
-  // Enemy patrols (around World 1 Level 2 difficulty).
+  // Strategic enemy placements: platform patrols, double-stomp pairs, and spring targets.
   const enemies = [
-    [16, "r"],
-    [28, "p"],
-    [36, "b"],
-    [52, "r"],
-    [66, "p"],
-    [84, "b"],
-    [98, "r"],
-    [116, "p"],
-    [126, "b"],
-    [142, "r"],
-    [172, "b"],
-    [180, "p"],
+    [16, rows - 2, "r"],
+    [28, rows - 2, "r"],
+    // Elevated guard on first crossing ledge
+    [34, 11, "p"],
+    // Mid-section platform guard
+    [60, 12, "r"],
+    // Ground double stomp combo
+    [82, rows - 2, "r"],
+    [85, rows - 2, "r"],
+    // Second crossing elevated guard
+    [95, 11, "b"],
+    // Springboard landing reward: elevated robot tower on high ledge
+    [114, 11, "t"],
+    [119, 11, "p"],
+    // Late platform patrol
+    [148, 11, "p"],
+    // Final dash runners
+    [170, rows - 2, "b"],
+    [178, rows - 2, "r"],
   ];
-  for (const [x, kind] of enemies) put(x, rows - 2, kind);
+  for (const [x, y, kind] of enemies) put(x, y, kind);
 
   // End setup.
   put(cols - 6, 10, "!");

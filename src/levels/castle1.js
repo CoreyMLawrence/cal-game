@@ -59,10 +59,10 @@ export function buildCastle1Level() {
   put(75, rows - 2, "^");
   for (let x = 79; x <= 90; x++) put(x, 12, "#");
   for (let x = 92; x <= 99; x++) put(x, 11, "#");
-  put(83, rows - 2, "p");
+  put(85, 11, "p");
   put(89, rows - 2, "r");
-  put(95, rows - 2, "b");
-  for (let x = 80; x <= 98; x += 2) putCoin(x, 12);
+  put(95, 10, "b");
+  for (let x = 80; x <= 98; x += 2) putCoin(x, 10);
 
   // Central lava gauntlet (still dangerous but now more traversable).
   lavaPool(104, 10, 1);
@@ -71,13 +71,13 @@ export function buildCastle1Level() {
   put(111, 12, "~");
   put(108, 11, "F");
   put(112, 11, "F");
-  for (let x = 104; x <= 114; x += 2) putCoin(x, 12);
+  for (let x = 104; x <= 114; x += 2) putCoin(x, 10);
 
   // Brick choke point.
   for (let x = 124; x <= 132; x++) put(x, 12, "B");
-  put(127, rows - 2, "r");
+  put(128, 11, "r");
   put(131, rows - 2, "b");
-  for (let x = 124; x <= 132; x += 2) putCoin(x, 12);
+  for (let x = 124; x <= 132; x += 2) putCoin(x, 10);
 
   // Final hazard run before the tower.
   lavaPool(138, 8, 1);
@@ -87,7 +87,7 @@ export function buildCastle1Level() {
   for (let x = 147; x <= 150; x++) put(x, 12, "#");
   put(141, 11, "F");
   put(145, 11, "F");
-  put(149, rows - 2, "p");
+  put(149, 11, "p");
   put(151, rows - 2, "r");
   for (let x = 138; x <= 152; x += 2) putCoin(x, 12);
 

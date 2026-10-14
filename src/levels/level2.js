@@ -68,26 +68,29 @@ export function buildLevel2() {
   putCoin(180, 13);
   putCoin(182, 14);
 
-  // Harder enemy density (more than level 1).
+  // Strategic enemy placements: platform guards, double-stomp chains, and spring targets.
   const enemies = [
-    [18, "r"],
-    [22, "b"],
-    [36, "p"],
-    [43, "r"],
-    [58, "b"],
-    [66, "p"],
-    [82, "r"],
-    [96, "b"],
-    [108, "p"],
-    [118, "r"],
-    [132, "b"],
-    [144, "p"],
-    [166, "r"],
-    [176, "b"],
-    [190, "r"],
-    [198, "b"],
+    [18, rows - 2, "r"],
+    [22, rows - 2, "b"],
+    // Elevated guard on middle pit crossing ledge
+    [49, 11, "p"],
+    // Ground double bounce combo
+    [62, rows - 2, "r"],
+    [65, rows - 2, "r"],
+    // Mid-level platform guards
+    [90, 12, "r"],
+    [105, 11, "b"],
+    [118, 12, "p"],
+    // Springboard reward: landing stomp on elevated tower
+    [144, 11, "t"],
+    // Late sequence runners & double bounce
+    [166, rows - 2, "r"],
+    [169, rows - 2, "r"],
+    // Pre-goal dash
+    [188, rows - 2, "b"],
+    [194, rows - 2, "t"],
   ];
-  for (const [x, kind] of enemies) put(x, rows - 2, kind);
+  for (const [x, y, kind] of enemies) put(x, y, kind);
 
   // Bonus strip before finish.
   for (let x = 186; x <= 200; x += 2) putCoin(x, 13);

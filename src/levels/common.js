@@ -19,10 +19,10 @@ export function fillGround(put, cols, groundY, tile = "=") {
 }
 
 export function createCoinPlacer({ put, rows, groundY }) {
-  const coinY = Math.max(0, Math.min(rows - 1, groundY - 1));
+  const defaultCoinY = Math.max(0, Math.min(rows - 1, groundY - 1));
 
-  return function putCoin(x, y) {
-    // Ground-level coin lane (one tile above the floor).
-    put(x, coinY, "o");
+  return function putCoin(x, y = null) {
+    const targetY = y != null ? Math.max(0, Math.min(rows - 1, y)) : defaultCoinY;
+    put(x, targetY, "o");
   };
 }
