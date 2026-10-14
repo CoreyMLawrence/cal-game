@@ -43,7 +43,7 @@ export function buildDesert4Level() {
   platform(35, 43, 12, "#");
   platform(46, 49, 12, "~");
   coinLine(26, 49, 11);
-  put(36, rows - 2, "t");
+  put(38, 11, "t");
   put(45, rows - 2, "p");
 
   // Ruin choke and spring redirect.
@@ -54,9 +54,9 @@ export function buildDesert4Level() {
   put(66, 9, "W");
   put(74, 8, "S");
   coinLine(50, 79, 9);
-  put(58, rows - 2, "r");
-  put(69, rows - 2, "t");
-  put(78, rows - 2, "b");
+  put(54, 11, "r");
+  put(67, 10, "t");
+  put(76, 9, "b");
 
   // Storm lane two.
   platform(80, 86, 13, "~");
@@ -64,8 +64,8 @@ export function buildDesert4Level() {
   platform(98, 104, 12, "~");
   platform(107, 109, 11, "#");
   coinLine(80, 109, 10);
-  put(90, rows - 2, "p");
-  put(103, rows - 2, "t");
+  put(92, 11, "p");
+  put(108, 10, "t");
 
   // Sand temple stacks.
   platform(110, 119, 13, "#");
@@ -76,8 +76,8 @@ export function buildDesert4Level() {
   put(134, 8, "Z");
   coinLine(110, 143, 9);
   put(116, rows - 2, "t");
-  put(126, rows - 2, "r");
-  put(141, rows - 2, "b");
+  put(132, 10, "r");
+  put(140, 9, "b");
 
   // Storm lane three.
   platform(144, 149, 13, "~");
@@ -85,8 +85,8 @@ export function buildDesert4Level() {
   platform(162, 167, 12, "~");
   platform(170, 173, 11, "#");
   coinLine(144, 173, 10);
-  put(154, rows - 2, "p");
-  put(165, rows - 2, "t");
+  put(155, 11, "p");
+  put(171, 10, "t");
 
   // Endurance gauntlet.
   platform(174, 180, 13, "~");

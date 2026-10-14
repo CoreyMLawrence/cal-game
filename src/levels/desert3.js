@@ -45,7 +45,7 @@ export function buildDesert3Level() {
   put(39, 10, "I");
   put(45, 9, "Z");
   coinLine(24, 47, 10);
-  put(29, rows - 2, "r");
+  put(36, 11, "r");
   put(41, rows - 2, "t");
 
   // Collapsed chambers.
@@ -54,7 +54,7 @@ export function buildDesert3Level() {
   platform(66, 71, 12, "~");
   put(64, rows - 2, "^");
   coinLine(48, 71, 10);
-  put(58, rows - 2, "p");
+  put(60, 11, "p");
   put(70, rows - 2, "b");
 
   // Vertical ruin shaft with moving lifts.
@@ -67,8 +67,8 @@ export function buildDesert3Level() {
   put(96, 7, "W");
   coinLine(72, 103, 8);
   put(76, rows - 2, "t");
-  put(91, rows - 2, "r");
-  put(102, rows - 2, "p");
+  put(89, 9, "r");
+  put(101, 8, "p");
 
   // Temple roof run.
   platform(108, 121, 12, "#");
@@ -76,8 +76,8 @@ export function buildDesert3Level() {
   put(113, 7, "*");
   platform(124, 129, 11, "#");
   coinLine(108, 129, 8);
-  put(116, rows - 2, "b");
-  put(126, rows - 2, "t");
+  put(114, 11, "b");
+  put(126, 10, "t");
 
   // Sand channels and convoy lane.
   platform(130, 134, 13, "~");

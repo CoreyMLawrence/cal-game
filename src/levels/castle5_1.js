@@ -38,7 +38,7 @@ export function buildCastle5_1Level() {
   put(12, 12, "?");
   coinLine(8, 20, 11);
   platform(19, 23, 12);
-  put(18, rows - 3, "r");
+  put(20, 11, "r");
   put(24, rows - 3, "p");
   put(22, 11, "F");
 
@@ -52,9 +52,9 @@ export function buildCastle5_1Level() {
   put(44, 12, "~");
   platform(50, 56, 12);
   coinLine(29, 57, 11);
-  put(39, rows - 3, "b");
+  put(39, 11, "b");
   put(47, rows - 3, "r");
-  put(56, rows - 3, "p");
+  put(53, 11, "p");
   put(44, 11, "F");
 
   // SECTION C: Fire Corridor.
@@ -66,10 +66,10 @@ export function buildCastle5_1Level() {
   put(88, 13, "~");
   platform(92, 95, 12);
   coinLine(60, 95, 11);
-  put(62, rows - 3, "r");
+  put(65, 11, "r");
   put(67, rows - 3, "b");
-  put(80, rows - 3, "p");
-  put(93, rows - 3, "b");
+  put(77, 11, "p");
+  put(93, 11, "b");
   put(63, 11, "F");
   put(68, 11, "F");
   put(78, 11, "F");
