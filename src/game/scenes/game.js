@@ -302,6 +302,10 @@ export function registerGameScene(ctx) {
         },
         update() {
           if (!origin) return;
+          // Performance: skip offscreen moving platforms
+          const cam = camPos();
+          if (Math.abs(origin.x - cam.x) > halfW + 180) return;
+
           const t = time() * speed + phase;
           if (axis === "y") this.pos.y = origin.y + Math.sin(t) * range;
           else this.pos.x = origin.x + Math.sin(t) * range;
@@ -309,26 +313,18 @@ export function registerGameScene(ctx) {
       };
     }
 
-    function vineTile() {
-      let baseX = null;
-      let swayPhase = 0;
+    const vineTiles = [];
+    function vineTile(tilePos = null) {
+      if (tilePos) {
+        vineTiles.push({
+          tileX: Math.floor(tilePos.x),
+          tileY: Math.floor(tilePos.y),
+        });
+      }
       return [
         sprite("vine"),
-        area({
-          scale: vec2(0.42, 1),
-          offset: vec2(9.2, 0),
-        }),
         perfCull(),
         "vine",
-        {
-          add() {
-            swayPhase = rand(0, Math.PI * 2);
-          },
-          update() {
-            if (baseX == null) baseX = this.pos.x;
-            this.pos.x = baseX + Math.sin(time() * 2.2 + swayPhase) * 0.9;
-          },
-        },
       ];
     }
 
@@ -794,6 +790,7 @@ export function registerGameScene(ctx) {
           movingPlatform({
             range: levelHorizontalPlatformRange,
             speed: levelHorizontalPlatformSpeed,
+            phase: Math.floor(tilePos.x / 5) * 1.5 + tilePos.y * 0.4,
           }),
         ],
         "|": (tilePos) => [
@@ -806,7 +803,7 @@ export function registerGameScene(ctx) {
             axis: "y",
             range: levelVerticalPlatformRange,
             speed: levelVerticalPlatformSpeed,
-            phase: tilePos.x * 0.33 + tilePos.y * 0.21,
+            phase: Math.floor(tilePos.x / 5) * 1.5 + tilePos.y * 0.4,
           }),
         ],
         c: () => fragileCloudTile(),
@@ -814,7 +811,7 @@ export function registerGameScene(ctx) {
         L: () => lavaTile(),
         F: () => fireTile(),
         o: () => coinTile(),
-        v: () => vineTile(),
+        v: (tilePos) => vineTile(tilePos),
         "?": () => questionBlockTile("coin"),
         "*": () => questionBlockTile("battery"),
         W: () => questionBlockTile("wing"),
@@ -898,9 +895,66 @@ export function registerGameScene(ctx) {
             topSprites: ["robot-red", "robot-pink"],
           }),
       },
-    });
-
     worldDeathY = level.levelHeight() + CONFIG.fallDeathPadding;
+
+    const vineColumns = (() => {
+      if (vineTiles.length === 0) return [];
+      const byCol = new Map();
+      for (let i = 0; i < vineTiles.length; i++) {
+        const vt = vineTiles[i];
+        if (!byCol.has(vt.tileX)) byCol.set(vt.tileX, []);
+        byCol.get(vt.tileX).push(vt.tileY);
+      }
+      const columns = [];
+      for (const [colX, yList] of byCol.entries()) {
+        yList.sort((a, b) => a - b);
+        let startY = yList[0];
+        let prevY = yList[0];
+        for (let j = 1; j < yList.length; j++) {
+          const cy = yList[j];
+          if (cy === prevY + 1) {
+            prevY = cy;
+          } else {
+            columns.push({
+              tileX: colX,
+              topTileY: startY,
+              bottomTileY: prevY,
+              centerX: colX * tileSize + tileSize * 0.5,
+              topWorldY: startY * tileSize,
+              bottomWorldY: (prevY + 1) * tileSize,
+            });
+            startY = cy;
+            prevY = cy;
+          }
+        }
+        columns.push({
+          tileX: colX,
+          topTileY: startY,
+          bottomTileY: prevY,
+          centerX: colX * tileSize + tileSize * 0.5,
+          topWorldY: startY * tileSize,
+          bottomWorldY: (prevY + 1) * tileSize,
+        });
+      }
+      return columns;
+    })();
+
+    function getOverlappingVine(box) {
+      if (!box) return null;
+      const pCenterX = (box.left + box.right) * 0.5;
+      const pBottom = box.bottom;
+      const pTop = box.top;
+
+      for (let i = 0; i < vineColumns.length; i++) {
+        const v = vineColumns[i];
+        if (pCenterX >= v.centerX - 24 && pCenterX <= v.centerX + 24) {
+          if (pBottom >= v.topWorldY - 14 && pTop <= v.bottomWorldY + 10) {
+            return v;
+          }
+        }
+      }
+      return null;
+    }
 
     const halfW = width() / 2;
     const _dVec = vec2(0, 0);
@@ -1073,65 +1127,74 @@ export function registerGameScene(ctx) {
     }
 
     function drawCloudBackdropDirect(camX, left, right, levelW) {
-      dRect(
-        left - 20,
-        -10,
-        width() + 40,
-        height() + 20,
-        rgb(levelTheme.skyTop.r, levelTheme.skyTop.g, levelTheme.skyTop.b),
-      );
-      dRect(left - 20, height() - 140, width() + 40, 140, rgb(255, 218, 172), 0.42);
+      const topCol = rgb(levelTheme.skyTop.r, levelTheme.skyTop.g, levelTheme.skyTop.b);
+      const hazeCol = rgb(255, 222, 185);
+      const cloudWhite = rgb(255, 255, 255);
+      const cloudShadow = rgb(215, 228, 245);
+      const cloudRim = rgb(246, 238, 244);
+      const islandCol = rgb(155, 142, 178);
+      const grassCol = rgb(118, 190, 132);
+
+      // Sky base
+      dRect(left - 20, -10, width() + 40, height() + 20, topCol);
+      // Soft warm atmospheric horizon band
+      dRect(left - 20, height() - 150, width() + 40, 90, hazeCol, 0.40);
 
       // Cloud horizon golden sun (p = 0.04)
       const sunScreenX = 320 + (camX / (levelW || 1)) * 30;
       const sunWorldX = left + sunScreenX;
-      dCircle(sunWorldX, height() - 130, 68, rgb(255, 235, 175), 0.55);
+      dCircle(sunWorldX, height() - 130, 52, rgb(255, 238, 180), 0.65);
 
       // Distant floating island silhouettes (p = 0.20)
       const pIsland = 0.20;
       const islandCamX = camX * pIsland;
-      const islandStep = 380;
+      const islandStep = 360;
       const iStart = Math.floor((islandCamX - halfW - 200) / islandStep) * islandStep;
       const iEnd = islandCamX + halfW + 200;
-      const islandCol = rgb(164, 150, 186);
-      const grassCol = rgb(128, 196, 140);
       for (let lx = iStart; lx <= iEnd; lx += islandStep) {
         const worldX = camX + (lx - islandCamX);
-        const iy = 160 + (Math.abs(lx * 7) % 90);
-        dTri(worldX, iy, worldX + 45, iy + 36, worldX + 90, iy, islandCol, 0.65);
-        dRect(worldX - 3, iy - 6, 96, 12, grassCol, 0.72, 6);
+        const iy = 150 + (Math.abs(lx * 7) % 85);
+        dTri(worldX, iy, worldX + 42, iy + 34, worldX + 84, iy, islandCol, 0.70);
+        dRect(worldX - 2, iy - 6, 88, 8, grassCol, 0.85);
       }
 
-      // Massive fluffy cloud bank deck at bottom of screen (p = 0.38)
-      const pDeck = 0.38;
-      const deckCamX = camX * pDeck;
-      const deckStep = 110;
-      const dStart = Math.floor((deckCamX - halfW - 150) / deckStep) * deckStep;
-      const dEnd = deckCamX + halfW + 150;
-      const cloudWhite = rgb(255, 255, 255);
-      const cloudPink = rgb(248, 238, 244);
-      const deckY = height() - 20;
-      for (let lx = dStart; lx <= dEnd; lx += deckStep) {
-        const worldX = camX + (lx - deckCamX);
-        const r = 68 + (Math.abs(lx * 13) % 40);
-        dCircle(worldX + r * 0.8, deckY, r, cloudWhite, 0.88);
-        dCircle(worldX + r * 1.2, deckY + 15, r * 0.8, cloudPink, 0.92);
-      }
-
-      // Floating puffy cloud clusters across upper sky (p = 0.48 + drift)
-      const pSky = 0.48;
-      const skyCamX = camX * pSky - time() * 12;
-      const skyStep = 220;
-      const sStart = Math.floor((skyCamX - halfW - 200) / skyStep) * skyStep;
-      const sEnd = skyCamX + halfW + 200;
+      // Upper floating retro clouds (p = 0.42 + drift)
+      const pSky = 0.42;
+      const skyCamX = camX * pSky - time() * 10;
+      const skyStep = 240;
+      const sStart = Math.floor((skyCamX - halfW - 160) / skyStep) * skyStep;
+      const sEnd = skyCamX + halfW + 160;
       for (let lx = sStart; lx <= sEnd; lx += skyStep) {
         const worldX = camX + (lx - skyCamX);
-        const cy = 40 + (Math.abs(lx * 17) % 80);
-        const cw = 75 + (Math.abs(lx * 3) % 35);
-        dRect(worldX, cy + 10, cw * 1.3, 20, cloudWhite, 0.78, 10);
-        dCircle(worldX + 20, cy + 8, 22, cloudWhite, 0.85);
-        dCircle(worldX + 48, cy + 2, 30, cloudWhite, 0.90);
-        dCircle(worldX + 76, cy + 10, 18, cloudWhite, 0.82);
+        const cy = 40 + (Math.abs(lx * 13) % 70);
+        const cw = 70 + (Math.abs(lx * 5) % 36);
+
+        // Stylized retro cloud composed of crisp solid rects (single batched draw call, 0 overdraw)
+        dRect(worldX, cy + 8, cw, 18, cloudWhite);
+        dRect(worldX + 12, cy, cw - 24, 10, cloudWhite);
+        dRect(worldX + 22, cy - 6, cw - 44, 8, cloudWhite);
+        dRect(worldX + 4, cy + 22, cw - 8, 4, cloudShadow, 0.45);
+      }
+
+      // Lower cloud deck bank at horizon (p = 0.60)
+      const pDeck = 0.60;
+      const deckCamX = camX * pDeck;
+      const deckStep = 130;
+      const dStart = Math.floor((deckCamX - halfW - 140) / deckStep) * deckStep;
+      const dEnd = deckCamX + halfW + 140;
+      const deckY = height() - 56;
+
+      // Solid base cloud floor
+      dRect(left - 20, deckY, width() + 40, 76, cloudWhite);
+      dRect(left - 20, deckY - 4, width() + 40, 6, cloudRim, 0.75);
+
+      // Stepped fluffy crests along the top rim
+      for (let lx = dStart; lx <= dEnd; lx += deckStep) {
+        const worldX = camX + (lx - deckCamX);
+        const crestH = 16 + (Math.abs(lx * 7) % 18);
+        dRect(worldX, deckY - crestH, 72, crestH + 4, cloudWhite);
+        dRect(worldX + 14, deckY - crestH - 10, 44, 12, cloudWhite);
+        dRect(worldX + 24, deckY - crestH - 16, 24, 8, cloudWhite);
       }
     }
 
@@ -1395,9 +1458,10 @@ export function registerGameScene(ctx) {
     let lastGroundedAt = -Infinity;
     let stompCombo = 0;
     let lastStompAt = -Infinity;
-    let vineTouchUntil = -Infinity;
+    let lastVineContactAt = -Infinity;
     let vineDetachUntil = -Infinity;
     let climbingVine = false;
+    let activeClimbVine = null;
     let crossedGoalPoleWithoutGrab = false;
     const secretRouteExitX = level.levelWidth() + tileSize * 0.6;
     const flightCeilingY = -tileSize * 2;
@@ -2983,7 +3047,19 @@ export function registerGameScene(ctx) {
 
     onAnyInputPress(INPUT.jump, (inputName) => {
       if (ending || pauseActive) return;
-      if (climbingVine && INPUT.up.keys.includes(inputName)) return;
+      const isUpInput =
+        inputName === "up" ||
+        inputName === "w" ||
+        inputName === "dpad-up" ||
+        INPUT.up.keys.includes(inputName) ||
+        INPUT.up.buttons.includes(inputName);
+
+      const pBox = playerBoxAt(player.pos, _reusablePlayerBox);
+      const nearVine = getOverlappingVine(pBox) !== null;
+
+      // When near or on a vine, UP is reserved for climbing, not jumping!
+      if (isUpInput && (climbingVine || nearVine)) return;
+
       ensureAudioReady();
       jumpQueuedAt = time();
     });
@@ -3219,13 +3295,31 @@ export function registerGameScene(ctx) {
       const rightDown = anyInputDown(INPUT.right);
       const runDown = anyInputDown(INPUT.run);
       const jumpDown = anyInputDown(INPUT.jump);
-      const touchingVine = now < vineTouchUntil;
+      const pBox = playerBoxAt(player.pos, _reusablePlayerBox);
+      const currentVine = getOverlappingVine(pBox);
+      const touchingVine = currentVine !== null;
       const climbUp = anyInputDown(INPUT.up);
       const climbDown = anyInputDown(INPUT.down);
       const vineReattachLocked = now < vineDetachUntil;
-      if (!touchingVine || vineReattachLocked) climbingVine = false;
-      if (!vineReattachLocked && touchingVine && (climbUp || climbDown || climbingVine)) {
-        climbingVine = true;
+
+      if (touchingVine && !vineReattachLocked) {
+        lastVineContactAt = now;
+        if (!climbingVine) {
+          if (climbUp || (climbDown && !grounded)) {
+            climbingVine = true;
+            activeClimbVine = currentVine;
+            velX = 0;
+            player.vel.y = 0;
+          }
+        } else {
+          activeClimbVine = currentVine;
+        }
+      } else {
+        if (climbingVine) {
+          climbingVine = false;
+          activeClimbVine = null;
+          lastVineContactAt = now;
+        }
       }
 
       if (isBossLevel) {
@@ -3263,18 +3357,41 @@ export function registerGameScene(ctx) {
         velX = approach(velX, 0, decel * frameDt);
       }
 
-      // Let players walk off vines naturally instead of getting stuck.
-      if (climbingVine && moveDir !== 0) climbingVine = false;
-
-      if (climbingVine) {
-        velX = approach(velX, 0, (decel + 420) * frameDt);
+      if (climbingVine && activeClimbVine) {
         player.gravityScale = 0;
-        const climbDir = (climbUp ? -1 : 0) + (climbDown ? 1 : 0);
-        player.vel.y = approach(
-          player.vel.y,
-          climbDir * CONFIG.vineClimbSpeed,
-          CONFIG.wingLiftAccel * frameDt,
-        );
+        // Align smoothly to vine center
+        const targetX = activeClimbVine.centerX - (playerHitbox.offsetX + playerHitbox.width * 0.5);
+        player.pos.x = approach(player.pos.x, targetX, 360 * frameDt);
+        velX = 0;
+
+        // Walk off only if moving decisively away from the vine
+        if (moveDir !== 0 && Math.abs((pBox.left + pBox.right) * 0.5 - activeClimbVine.centerX) > 22) {
+          climbingVine = false;
+          activeClimbVine = null;
+          lastVineContactAt = now;
+        } else {
+          const climbDir = (climbUp ? -1 : 0) + (climbDown ? 1 : 0);
+          player.vel.y = approach(
+            player.vel.y,
+            climbDir * CONFIG.vineClimbSpeed,
+            CONFIG.wingLiftAccel * frameDt,
+          );
+
+          // If reached top of vine while climbing up, dismount atop the platform!
+          if (climbUp && pBox.bottom <= activeClimbVine.topWorldY + 4) {
+            player.pos.y = activeClimbVine.topWorldY - (playerHitbox.offsetY + playerHitbox.height) - 1;
+            player.vel.y = -60;
+            climbingVine = false;
+            activeClimbVine = null;
+            lastVineContactAt = now;
+          }
+          // If reached ground while climbing down, release cleanly
+          if (climbDown && grounded) {
+            climbingVine = false;
+            activeClimbVine = null;
+            player.vel.y = 0;
+          }
+        }
       } else if (wingActive) {
         player.gravityScale = CONFIG.wingGravityScale;
         if (jumpDown && !climbDown) {
@@ -3359,17 +3476,19 @@ export function registerGameScene(ctx) {
       // Jump buffer + coyote time.
       const buffered = now - jumpQueuedAt <= CONFIG.jumpBuffer;
       const canCoyote = now - lastGroundedAt <= CONFIG.coyoteTime;
-      const jumpedFromVine = climbingVine;
-      if (buffered && (jumpedFromVine || player.isGrounded() || canCoyote)) {
+      const canVineJump = climbingVine || (now - lastVineContactAt <= 0.22);
+      if (buffered && (canVineJump || player.isGrounded() || canCoyote)) {
         jumpQueuedAt = -Infinity;
-        climbingVine = false;
+        const jumpedFromVine = canVineJump && !player.isGrounded();
         if (jumpedFromVine) {
+          climbingVine = false;
+          activeClimbVine = null;
           vineDetachUntil = now + CONFIG.vineJumpDetachSeconds;
           const vineJumpDir = moveDir !== 0 ? moveDir : facing;
-          velX = vineJumpDir * Math.max(Math.abs(velX), CONFIG.walkSpeed * 0.55);
+          velX = vineJumpDir * Math.max(Math.abs(velX), CONFIG.walkSpeed * 0.85);
         }
         player.gravityScale = wingActive ? CONFIG.wingGravityScale : 1;
-        player.jump(jumpedFromVine ? CONFIG.jumpForce * 0.88 : CONFIG.jumpForce);
+        player.jump(jumpedFromVine ? CONFIG.jumpForce * 0.95 : CONFIG.jumpForce);
         playSfx("jump");
         spawnJetpackPuff();
       }
@@ -3412,9 +3531,6 @@ export function registerGameScene(ctx) {
       }
     });
 
-    player.onCollideUpdate("vine", () => {
-      vineTouchUntil = time() + 0.08;
-    });
 
     player.onCollide("fragileCloud", (fragile, col) => {
       if (ending || !fragile || !fragile.exists()) return;
