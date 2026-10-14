@@ -31,7 +31,7 @@ export function createGameCore() {
     tileSize: 32,
 
     gravity: 2400,
-    gravityMoon: 800,
+    gravityMoon: 1250,
 
     // Movement feel (adds “Mario-like” polish).
     walkSpeed: 240,
@@ -45,7 +45,9 @@ export function createGameCore() {
     coyoteTime: 0.12,
     jumpBuffer: 0.12,
     jumpForce: 900,
+    jumpForceMoon: 700,
     bounceForce: 520,
+    bounceForceMoon: 420,
     shortHopCut: 0.45,
 
     // Enemies.

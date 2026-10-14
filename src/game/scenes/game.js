@@ -225,61 +225,11 @@ export function registerGameScene(ctx) {
       return null;
     }
 
-    function moonRockDetailFor(spriteName) {
-      if (!isSpaceLevel) return null;
-      if (
-        spriteName !== "ground" &&
-        spriteName !== "block" &&
-        spriteName !== "ground-moon" &&
-        spriteName !== "block-moon" &&
-        spriteName !== "ground-cloud"
-      ) {
-        return null;
-      }
-      return {
-        id: "moonRockDetail",
-        require: ["pos"],
-        draw() {
-          const tileX = Math.floor(this.pos.x / tileSize);
-          const tileY = Math.floor(this.pos.y / tileSize);
-          const seed = Math.abs(tileX * 97 + tileY * 57);
-
-          const c1x = 7 + (seed % 10);
-          const c1y = 8 + (Math.floor(seed / 3) % 8);
-          const c1r = 2.8 + (seed % 3) * 0.45;
-          drawCircle({
-            pos: this.pos.add(c1x, c1y),
-            radius: c1r,
-            color: rgb(110, 114, 124),
-            opacity: 0.35,
-          });
-          drawCircle({
-            pos: this.pos.add(c1x - 1, c1y - 1),
-            radius: Math.max(1.5, c1r - 1.3),
-            color: rgb(170, 174, 182),
-            opacity: 0.22,
-          });
-
-          const c2x = 16 + (Math.floor(seed / 7) % 9);
-          const c2y = 12 + (Math.floor(seed / 5) % 8);
-          const c2r = 2 + (Math.floor(seed / 11) % 3) * 0.4;
-          drawCircle({
-            pos: this.pos.add(c2x, c2y),
-            radius: c2r,
-            color: rgb(106, 110, 120),
-            opacity: 0.28,
-          });
-        },
-      };
-    }
-
     function solidTile(spriteName, extra = [], tilePos = null) {
       const tint = tileTintFor(spriteName, tilePos);
-      const moonRockDetail = moonRockDetailFor(spriteName);
       return [
         sprite(spriteName),
         ...(tint ? [color(tint.r, tint.g, tint.b)] : []),
-        ...(moonRockDetail ? [moonRockDetail] : []),
         area(),
         body({ isStatic: true }),
         "solid",
@@ -302,9 +252,9 @@ export function registerGameScene(ctx) {
         },
         update() {
           if (!origin) return;
-          // Performance: skip offscreen moving platforms
-          const cam = camPos();
-          if (Math.abs(origin.x - cam.x) > halfW + 180) return;
+          // Performance: skip offscreen moving platforms without allocating Vec2
+          const camX = camPos().x;
+          if (Math.abs(origin.x - camX) > halfW + 180) return;
 
           const t = time() * speed + phase;
           if (axis === "y") this.pos.y = origin.y + Math.sin(t) * range;
@@ -323,7 +273,6 @@ export function registerGameScene(ctx) {
       }
       return [
         sprite("vine"),
-        perfCull(),
         "vine",
       ];
     }
@@ -348,11 +297,10 @@ export function registerGameScene(ctx) {
             wobblePhase = rand(0, Math.PI * 2);
           },
           update() {
+            if (!this.collapsing && this.active) return;
             if (this.collapsing) {
               const pulse = 0.6 + Math.abs(Math.sin(time() * 24 + wobblePhase)) * 0.4;
               this.opacity = pulse;
-            } else if (this.active) {
-              this.opacity = 1;
             }
 
             if (this.collapsing && time() >= collapseAt) {
@@ -464,135 +412,82 @@ export function registerGameScene(ctx) {
     }
 
     function coinTile() {
-      let baseY = null;
-      let phase = 0;
       return [
         sprite("coin"),
         area(),
-        perfCull(),
         "coin",
-        {
-          add() {
-            phase = rand(0, Math.PI * 2);
-          },
-          update() {
-            if (baseY == null) baseY = this.pos.y;
-            this.pos.y = baseY + Math.sin(time() * 4 + phase) * 2;
-          },
-        },
       ];
     }
 
     function superCoinTile({ activeAtStart = true } = {}) {
-      let baseY = null;
-      let phase = 0;
       return [
         sprite("super-coin"),
         area(),
-        perfCull(),
         "superCoin",
         {
           active: activeAtStart,
-          add() {
-            phase = rand(0, Math.PI * 2);
-            if (this.active) baseY = this.pos.y;
-          },
-          update() {
-            if (!this.active) return;
-            if (baseY == null) baseY = this.pos.y;
-            this.pos.y = baseY + Math.sin(time() * 4.6 + phase) * 2.4;
-            this.opacity = 0.84 + Math.abs(Math.sin(time() * 8.2 + phase)) * 0.16;
-          },
         },
       ];
     }
 
     function lavaTile() {
-      let baseY = null;
-      let phase = 0;
       return [
         sprite("lava"),
         area({
           scale: vec2(0.9, 0.5),
           offset: vec2(1.5, 14.5),
         }),
-        perfCull(),
         "hazard",
         "lava",
-        {
-          add() {
-            phase = rand(0, Math.PI * 2);
-          },
-          update() {
-            if (baseY == null) baseY = this.pos.y;
-            this.pos.y = baseY + Math.sin(time() * 5 + phase) * 1.4;
-          },
-        },
       ];
     }
 
     function fireTile() {
-      let baseY = null;
-      let phase = 0;
       return [
         sprite("fire"),
         area({
           scale: vec2(0.52, 0.74),
           offset: vec2(7.7, 6.8),
         }),
-        perfCull(),
         "hazard",
         "fire",
-        {
-          add() {
-            phase = rand(0, Math.PI * 2);
-          },
-          update() {
-            if (baseY == null) baseY = this.pos.y;
-            const bob = Math.sin(time() * 7 + phase) * 1.8;
-            this.pos.y = baseY + bob;
-            this.opacity = 0.84 + Math.sin(time() * 10 + phase) * 0.16;
-          },
-        },
       ];
     }
 
     function desertObeliskTile() {
       return [
         sprite("desert-obelisk"),
-        perfCull(),
         z(-2),
       ];
     }
 
+    const _astroHelmetFill = rgb(195, 229, 255);
+    const _astroHelmetOutline = rgb(238, 246, 255);
     function astroHelmetComponent() {
       return {
         id: "astroHelmet",
         require: ["pos"],
         draw() {
-          const center = this.pos.add(tileSize * 0.5, tileSize * 0.35);
+          const camX = camPos().x;
+          if (Math.abs(this.pos.x - camX) > halfW + 60) return;
+          _dVec.x = this.pos.x + tileSize * 0.5;
+          _dVec.y = this.pos.y + tileSize * 0.35;
           const helmetRadius = tileSize * 0.26;
           drawCircle({
-            pos: center,
+            pos: _dVec,
             radius: helmetRadius,
-            color: rgb(195, 229, 255),
+            color: _astroHelmetFill,
             opacity: 0.25,
           });
           drawCircle({
-            pos: center,
+            pos: _dVec,
             radius: helmetRadius,
             fill: false,
             outline: {
               width: 2,
-              color: rgb(238, 246, 255),
+              color: _astroHelmetOutline,
             },
             opacity: 0.82,
-          });
-          drawCircle({
-            pos: center.add(-tileSize * 0.08, -tileSize * 0.08),
-            radius: tileSize * 0.06,
-            color: rgb(255, 255, 255),
-            opacity: 0.38,
           });
         },
       };
@@ -1254,7 +1149,8 @@ export function registerGameScene(ctx) {
         const worldX = camX + (s.baseX - camX * s.parallax);
         if (worldX < left - 10 || worldX > right + 10) continue;
         const alpha = s.alpha * (0.58 + Math.sin(curTime * s.speed + s.phase) * 0.42);
-        dCircle(worldX, s.y, s.r, whiteStar, alpha);
+        const starSize = Math.max(1, Math.round(s.r * 1.2));
+        dRect(worldX, s.y, starSize, starSize, whiteStar, alpha);
       }
 
       const pBody = 0.16;
@@ -1443,7 +1339,7 @@ export function registerGameScene(ctx) {
     player.isGrounded = () => playerGrounded;
     player.isFalling = () => player.vel.y > 0;
     player.isJumping = () => player.vel.y < 0;
-    player.jump = (force = CONFIG.jumpForce) => {
+    player.jump = (force = (isSpaceLevel ? (CONFIG.jumpForceMoon ?? 700) : CONFIG.jumpForce)) => {
       playerGrounded = false;
       playerGroundObject = null;
       playerGroundObjectPos = null;
@@ -2186,7 +2082,7 @@ export function registerGameScene(ctx) {
 
     function movePlayerKinematic(totalDx, totalDy) {
       const distance = Math.max(Math.abs(totalDx), Math.abs(totalDy));
-      const steps = Math.max(1, Math.ceil(distance / PLAYER_MOVE_SUBSTEP));
+      const steps = Math.min(6, Math.max(1, Math.ceil(distance / PLAYER_MOVE_SUBSTEP)));
       const stepX = totalDx / steps;
       let stepY = totalDy / steps;
       let landedObj = null;
@@ -2688,73 +2584,27 @@ export function registerGameScene(ctx) {
 
     function destroyEnemyStompZone(enemy) {
       if (!enemy) return;
-      const zone = enemy.stompZone;
-      if (!zone) return;
-      if (typeof zone.exists !== "function" || zone.exists()) destroy(zone);
-      enemy.stompZone = null;
+      if (enemy.stompZone) {
+        if (typeof enemy.stompZone.exists !== "function" || enemy.stompZone.exists()) {
+          destroy(enemy.stompZone);
+        }
+        enemy.stompZone = null;
+      }
     }
 
     function addEnemyStompZone(enemy) {
-      if (!enemy || !enemy.exists()) return;
-      destroyEnemyStompZone(enemy);
-      const enemyStackHeight = Math.max(1, Math.floor(enemy.stackHeight ?? 1));
-      const stompTopOffset =
-        ENEMY_STOMP_ZONE_OFFSET_Y - (enemyStackHeight - 1) * tileSize;
-      enemy.stompZone = add([
-        pos(enemy.pos.x, enemy.pos.y + stompTopOffset),
-        rect(tileSize, ENEMY_STOMP_ZONE_HEIGHT),
-        anchor("topleft"),
-        area(),
-        opacity(0),
-        "enemyStompZone",
-        {
-          owner: enemy,
-          update() {
-            if (!this.owner || !this.owner.exists() || this.owner.defeated) {
-              destroy(this);
-              return;
-            }
-            this.pos.x = this.owner.pos.x;
-            const stackHeight = Math.max(
-              1,
-              Math.floor(this.owner.stackHeight ?? 1),
-            );
-            this.pos.y =
-              this.owner.pos.y +
-              ENEMY_STOMP_ZONE_OFFSET_Y -
-              (stackHeight - 1) * tileSize;
-          },
-        },
-      ]);
+      // Stomp check is handled with zero allocations via pure math in isPlayerStompingEnemy
     }
 
     function enemyStompBounds(enemy) {
-      const zone = enemy?.stompZone;
-      if (
-        zone &&
-        (typeof zone.exists !== "function" || zone.exists()) &&
-        typeof zone.worldArea === "function"
-      ) {
-        const box = zone.worldArea().bbox();
-        return {
-          left: box.pos.x,
-          top: box.pos.y,
-          right: box.pos.x + box.width,
-          bottom: box.pos.y + box.height,
-        };
-      }
+      const topOffset =
+        ENEMY_STOMP_ZONE_OFFSET_Y -
+        (Math.max(1, Math.floor(enemy.stackHeight ?? 1)) - 1) * tileSize;
       return {
         left: enemy.pos.x,
-        top:
-          enemy.pos.y +
-          ENEMY_STOMP_ZONE_OFFSET_Y -
-          (Math.max(1, Math.floor(enemy.stackHeight ?? 1)) - 1) * tileSize,
+        top: enemy.pos.y + topOffset,
         right: enemy.pos.x + tileSize,
-        bottom:
-          enemy.pos.y +
-          ENEMY_STOMP_ZONE_OFFSET_Y -
-          (Math.max(1, Math.floor(enemy.stackHeight ?? 1)) - 1) * tileSize +
-          ENEMY_STOMP_ZONE_HEIGHT,
+        bottom: enemy.pos.y + topOffset + ENEMY_STOMP_ZONE_HEIGHT,
       };
     }
 
@@ -3441,8 +3291,9 @@ export function registerGameScene(ctx) {
           if (Math.abs(enemy.pos.x - px) > 48) continue;
           if (!isPlayerStompingEnemy(enemy)) continue;
           squashEnemy(enemy);
-          player.jump(CONFIG.bounceForce);
-          if (player.vel) player.vel.y = -CONFIG.bounceForce;
+          const bounceF = isSpaceLevel ? (CONFIG.bounceForceMoon ?? 420) : CONFIG.bounceForce;
+          player.jump(bounceF);
+          if (player.vel) player.vel.y = -bounceF;
           break;
         }
       }
@@ -3490,7 +3341,8 @@ export function registerGameScene(ctx) {
           velX = vineJumpDir * Math.max(Math.abs(velX), CONFIG.walkSpeed * 0.85);
         }
         player.gravityScale = wingActive ? CONFIG.wingGravityScale : 1;
-        player.jump(jumpedFromVine ? CONFIG.jumpForce * 0.95 : CONFIG.jumpForce);
+        const baseJumpForce = isSpaceLevel ? (CONFIG.jumpForceMoon ?? 700) : CONFIG.jumpForce;
+        player.jump(jumpedFromVine ? baseJumpForce * 0.95 : baseJumpForce);
         playSfx("jump");
         spawnJetpackPuff();
       }
@@ -3582,6 +3434,10 @@ export function registerGameScene(ctx) {
 
       enemy.onUpdate(() => {
         if (ending) return;
+        const camX = camPos().x;
+        // Skip off-screen enemies to save CPU
+        if (Math.abs(enemy.pos.x - camX) > halfW + 120) return;
+
         // Keep horizontal motion explicit so patrol is stable even after collisions.
         enemy.vel.x = enemy.dir * enemy.speed;
 
@@ -3610,17 +3466,6 @@ export function registerGameScene(ctx) {
       });
     }
 
-    // Player vs enemies.
-    player.onCollide("enemyStompZone", (zone, col) => {
-      if (ending) return;
-      const enemy = zone?.owner;
-      if (!enemy || !enemy.exists() || enemy.defeated) return;
-
-      squashEnemy(enemy);
-      player.jump(CONFIG.bounceForce);
-      if (player.vel) player.vel.y = -CONFIG.bounceForce;
-    });
-
     function resolveEnemyOwner(obj) {
       if (!obj || (typeof obj.exists === "function" && !obj.exists())) return null;
       const owner = obj.stackOwner ?? obj;
@@ -3642,8 +3487,9 @@ export function registerGameScene(ctx) {
 
       if (isPlayerStompingEnemy(enemy, col)) {
         squashEnemy(enemy);
-        player.jump(CONFIG.bounceForce);
-        if (player.vel) player.vel.y = -CONFIG.bounceForce;
+        const bounceF = isSpaceLevel ? (CONFIG.bounceForceMoon ?? 420) : CONFIG.bounceForce;
+        player.jump(bounceF);
+        if (player.vel) player.vel.y = -bounceF;
         return;
       }
 
