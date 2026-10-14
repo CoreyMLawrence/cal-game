@@ -247,18 +247,18 @@ export function registerGameScene(ctx) {
       return {
         id: "movingPlatform",
         require: ["pos"],
+        isMovingPlatform: true,
+        syncPosition() {
+          if (!origin) return;
+          const t = time() * speed + phase;
+          if (axis === "y") this.pos.y = origin.y + Math.sin(t) * range;
+          else this.pos.x = origin.x + Math.sin(t) * range;
+        },
         add() {
           origin = this.pos.clone();
         },
         update() {
-          if (!origin) return;
-          // Performance: skip offscreen moving platforms without allocating Vec2
-          const camX = camPos().x;
-          if (Math.abs(origin.x - camX) > halfW + 180) return;
-
-          const t = time() * speed + phase;
-          if (axis === "y") this.pos.y = origin.y + Math.sin(t) * range;
-          else this.pos.x = origin.x + Math.sin(t) * range;
+          this.syncPosition();
         },
       };
     }
@@ -794,6 +794,99 @@ export function registerGameScene(ctx) {
 
     worldDeathY = level.levelHeight() + CONFIG.fallDeathPadding;
 
+    // -----------------------------------------------------------------
+    // High-performance Spatial Column Culling for Raspberry Pi 4
+    // Cuts Kaboom sprite draw list from 1,154 entities down to ~120 on screen
+    // -----------------------------------------------------------------
+    const maxCols = level.numColumns();
+    const maxRows = level.numRows();
+    const tilesByCol = Array.from({ length: maxCols }, () => []);
+    const _cullQuery = vec2(0, 0);
+
+    for (let cx = 0; cx < maxCols; cx++) {
+      for (let cy = 0; cy < maxRows; cy++) {
+        _cullQuery.x = cx;
+        _cullQuery.y = cy;
+        const objs = level.getAt(_cullQuery);
+        if (!objs || objs.length === 0) continue;
+        for (let i = 0; i < objs.length; i++) {
+          const obj = objs[i];
+          if (!obj) continue;
+          if (typeof obj.is === "function" && (obj.is("enemy") || obj.is("danger"))) continue;
+          tilesByCol[cx].push(obj);
+        }
+      }
+    }
+
+    let prevCullStartCol = -1;
+    let prevCullEndCol = -1;
+    function updateGridCulling(force = false) {
+      if (pauseActive && !force) return;
+      const camX = camPos().x;
+      // 4-tile margin (128px) beyond viewport left and right
+      const startCol = Math.max(0, Math.floor((camX - halfW - 128) / tileSize));
+      const endCol = Math.min(maxCols - 1, Math.ceil((camX + halfW + 128) / tileSize));
+
+      if (!force && startCol === prevCullStartCol && endCol === prevCullEndCol) {
+        return;
+      }
+
+      if (prevCullStartCol >= 0 && !force) {
+        // Columns moving out of view on left
+        for (let c = prevCullStartCol; c < startCol; c++) {
+          const list = tilesByCol[c];
+          if (!list) continue;
+          for (let i = 0; i < list.length; i++) {
+            const t = list[i];
+            t.hidden = true;
+            if (t.isMovingPlatform) t.paused = true;
+          }
+        }
+        // Columns moving out of view on right
+        for (let c = endCol + 1; c <= prevCullEndCol; c++) {
+          const list = tilesByCol[c];
+          if (!list) continue;
+          for (let i = 0; i < list.length; i++) {
+            const t = list[i];
+            t.hidden = true;
+            if (t.isMovingPlatform) t.paused = true;
+          }
+        }
+      } else {
+        // Full initial cull: hide all offscreen tiles across entire level
+        for (let c = 0; c < maxCols; c++) {
+          if (c < startCol || c > endCol) {
+            const list = tilesByCol[c];
+            if (!list) continue;
+            for (let i = 0; i < list.length; i++) {
+              const t = list[i];
+              t.hidden = true;
+              if (t.isMovingPlatform) t.paused = true;
+            }
+          }
+        }
+      }
+
+      // Unhide newly entered columns
+      for (let c = startCol; c <= endCol; c++) {
+        if (force || prevCullStartCol < 0 || c < prevCullStartCol || c > prevCullEndCol) {
+          const list = tilesByCol[c];
+          if (!list) continue;
+          for (let i = 0; i < list.length; i++) {
+            const t = list[i];
+            t.hidden = false;
+            if (t.isMovingPlatform) {
+              t.paused = false;
+              if (typeof t.syncPosition === "function") t.syncPosition();
+            }
+          }
+        }
+      }
+
+      prevCullStartCol = startCol;
+      prevCullEndCol = endCol;
+    }
+
     const vineColumns = (() => {
       if (vineTiles.length === 0) return [];
       const byCol = new Map();
@@ -1057,7 +1150,7 @@ export function registerGameScene(ctx) {
       // Cloud horizon golden sun (p = 0.04)
       const sunScreenX = 320 + (camX / (levelW || 1)) * 30;
       const sunWorldX = left + sunScreenX;
-      dCircle(sunWorldX, height() - 130, 52, _cCloudSun, 0.65);
+      dRect(sunWorldX - 44, height() - 150, 88, 48, _cCloudSun, 0.68, 14);
 
       // Distant floating island silhouettes (p = 0.20)
       const pIsland = 0.20;
@@ -1212,37 +1305,40 @@ export function registerGameScene(ctx) {
       // 1. Solid deep dungeon stone wall base
       dRect(left - 20, -10, width() + 40, height() + 20, _cWallBg);
 
-      // 2. Brick masonry pattern across background wall (p = 0.12)
+      // 2. Heavy horizontal stone block masonry (p = 0.12)
       const pWall = 0.12;
       const wallCamX = camX * pWall;
-      const bRowH = 26;
-      const bColW = 54;
-      const wStart = Math.floor((wallCamX - halfW - 60) / bColW) * bColW;
-      const wEnd = wallCamX + halfW + 60;
+      const courseH = 68;
+      const stoneW = 136;
+      const wStart = Math.floor((wallCamX - halfW - 140) / stoneW) * stoneW;
+      const wEnd = wallCamX + halfW + 140;
 
-      // Horizontal mortar lines
-      for (let y = 16; y < height() - 30; y += bRowH) {
-        dRect(left - 10, y, width() + 20, 2, _cWallMortarH, 0.7);
+      // Alternating broad stone courses across screen height
+      for (let rowIdx = 0, y = 22; y < height() - 36; y += courseH, rowIdx++) {
+        if (rowIdx % 2 === 1) {
+          dRect(left - 10, y, width() + 20, courseH, _cWallMortarH, 0.45);
+        }
+        dRect(left - 10, y + courseH - 2, width() + 20, 2, _cWallMortarV, 0.7);
       }
-      // Staggered vertical mortar joints
-      for (let lx = wStart; lx <= wEnd; lx += bColW) {
+      // Staggered vertical seams between giant castle blocks
+      for (let lx = wStart; lx <= wEnd; lx += stoneW) {
         const wx = camX + (lx - wallCamX);
-        for (let rowIdx = 0, y = 16; y < height() - 40; y += bRowH, rowIdx++) {
-          const shift = (rowIdx % 2) * (bColW * 0.5);
-          dRect(wx + shift, y, 2, bRowH, _cWallMortarV, 0.6);
+        for (let rowIdx = 0, y = 22; y < height() - 36; y += courseH, rowIdx++) {
+          const shift = (rowIdx % 2) * (stoneW * 0.5);
+          dRect(wx + shift, y, 2, courseH - 2, _cWallMortarV, 0.6);
         }
       }
 
       // 3. Gothic Arched Niches & Windows (p = 0.22)
       const pArch = 0.22;
       const archCamX = camX * pArch;
-      const archStep = 210;
-      const aStart = Math.floor((archCamX - halfW - 160) / archStep) * archStep;
-      const aEnd = archCamX + halfW + 160;
+      const archStep = 240;
+      const aStart = Math.floor((archCamX - halfW - 180) / archStep) * archStep;
+      const aEnd = archCamX + halfW + 180;
       for (let lx = aStart; lx <= aEnd; lx += archStep) {
         const worldX = camX + (lx - archCamX);
-        const archW = 46;
-        const archH = 92;
+        const archW = 48;
+        const archH = 94;
         const archY = 160;
 
         // Recessed alcove shadow
@@ -1257,10 +1353,10 @@ export function registerGameScene(ctx) {
         const archIdx = Math.abs(Math.floor(lx / archStep));
         if (archIdx % 2 === 1) {
           dRect(worldX - archW * 0.5 + 4, archY + 4, archW - 8, archH - 8, _cAlcoveGlow, 0.45);
-          dRect(worldX - 11, archY + 4, 3, archH - 8, _cIronBar);
+          dRect(worldX - 12, archY + 4, 3, archH - 8, _cIronBar);
           dRect(worldX, archY + 4, 3, archH - 8, _cIronBar);
-          dRect(worldX + 11, archY + 4, 3, archH - 8, _cIronBar);
-          dRect(worldX - archW * 0.5 + 4, archY + 44, archW - 8, 3, _cIronBar);
+          dRect(worldX + 12, archY + 4, 3, archH - 8, _cIronBar);
+          dRect(worldX - archW * 0.5 + 4, archY + 46, archW - 8, 3, _cIronBar);
         }
       }
 
@@ -1271,10 +1367,10 @@ export function registerGameScene(ctx) {
       // 5. Grand Castle Support Pillars + Wall Torches (p = 0.38)
       const pPillar = 0.38;
       const pilCamX = camX * pPillar;
-      const pilStep = 210;
+      const pilStep = 240;
       // Stagger pillars between the arches
-      const pilStart = Math.floor((pilCamX - halfW - 160) / pilStep) * pilStep + 105;
-      const pilEnd = pilCamX + halfW + 160;
+      const pilStart = Math.floor((pilCamX - halfW - 180) / pilStep) * pilStep + 120;
+      const pilEnd = pilCamX + halfW + 180;
 
       for (let lx = pilStart; lx <= pilEnd; lx += pilStep) {
         const px = camX + (lx - pilCamX);
@@ -1297,13 +1393,11 @@ export function registerGameScene(ctx) {
         dRect(pilLeft - 7, pilBot - 10, pilW + 14, 12, _cPillarBase);
 
         // Hanging chains between pillars (from ceiling)
-        const chainX1 = px - 55;
-        const chainX2 = px + 55;
-        for (let cy = 25; cy < 75; cy += 8) {
-          dRect(chainX1, cy, 3, 5, _cChainLink);
-        }
-        for (let cy = 25; cy < 60; cy += 8) {
-          dRect(chainX2, cy, 3, 5, _cChainLink);
+        const chainX1 = px - 60;
+        const chainX2 = px + 60;
+        for (let cy = 25; cy < 65; cy += 10) {
+          dRect(chainX1, cy, 3, 6, _cChainLink);
+          dRect(chainX2, cy, 3, 6, _cChainLink);
         }
 
         // Wall Sconce with Flickering Torch Flame
@@ -2688,6 +2782,7 @@ export function registerGameScene(ctx) {
 
     updateCamera();
     updatePerfCullables();
+    updateGridCulling(true);
 
     function awardStomp(enemyPos) {
       const now = time();
@@ -3423,6 +3518,7 @@ export function registerGameScene(ctx) {
 
       const camLeftEdge = updateCamera();
       updatePerfCullables();
+      updateGridCulling();
       if (player.pos.x < camLeftEdge + 8) {
         player.pos.x = camLeftEdge + 8;
         velX = Math.max(0, velX);
