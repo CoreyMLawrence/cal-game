@@ -106,7 +106,7 @@ export function createGameCore() {
     vec2,
   });
 
-  const GAMEPAD_STICK_DEADZONE = 0.35;
+  const GAMEPAD_STICK_DEADZONE = 0.3;
 
   // Kaboom gamepad names come from vendor/kaboom.js default mapping:
   // south/east/west/north, dpad-*, ltrigger/rtrigger, lshoulder/rshoulder, start/select.
@@ -132,20 +132,22 @@ export function createGameCore() {
       sticks: [{ stick: "left", axis: "y", dir: 1 }],
     },
     jump: {
-      keys: ["space", "up", "w"],
-      // Cross / Circle + triggers.
+      keys: ["space", "z", "up", "w"],
+      // Cross / Circle + triggers (Mouse-Squad standard).
       buttons: ["south", "east", "ltrigger", "rtrigger"],
     },
     run: {
-      keys: ["shift"],
-      // Square / Triangle + shoulders.
+      keys: ["shift", "x"],
+      // Square / Triangle + shoulders (Mouse-Squad standard).
       buttons: ["west", "north", "lshoulder", "rshoulder"],
     },
-    // "Options" is exposed as "start" on standard mappings.
     confirm: {
-      keys: ["enter"],
-      // Confirm can also use jump-style buttons on gamepad.
+      keys: ["enter", "space", "z"],
       buttons: ["start", "south", "east", "ltrigger", "rtrigger"],
+    },
+    back: {
+      keys: ["escape", "x", "backspace"],
+      buttons: ["east", "select"],
     },
     restart: {
       keys: ["r"],
@@ -173,6 +175,44 @@ export function createGameCore() {
     return stickBinding.dir < 0 ? value <= -threshold : value >= threshold;
   }
 
+  function anyGamepadPolledDown(binding) {
+    if (typeof navigator === "undefined" || !navigator.getGamepads) return false;
+    const pads = navigator.getGamepads();
+    for (const p of pads) {
+      if (!p || !p.connected) continue;
+      const dz = GAMEPAD_STICK_DEADZONE;
+      const ax = p.axes[0] || 0;
+      const ay = p.axes[1] || 0;
+      const dpadLeft = !!(p.buttons[14] && p.buttons[14].pressed);
+      const dpadRight = !!(p.buttons[15] && p.buttons[15].pressed);
+      const dpadUp = !!(p.buttons[12] && p.buttons[12].pressed);
+      const dpadDown = !!(p.buttons[13] && p.buttons[13].pressed);
+
+      const btnA = !!(p.buttons[0] && p.buttons[0].pressed);
+      const btnB = !!(p.buttons[1] && p.buttons[1].pressed);
+      const btnX = !!(p.buttons[2] && p.buttons[2].pressed);
+      const btnY = !!(p.buttons[3] && p.buttons[3].pressed);
+      const l1 = !!(p.buttons[4] && p.buttons[4].pressed);
+      const r1 = !!(p.buttons[5] && p.buttons[5].pressed);
+      const l2 = !!(p.buttons[6] && p.buttons[6].pressed);
+      const r2 = !!(p.buttons[7] && p.buttons[7].pressed);
+      const select = !!(p.buttons[8] && p.buttons[8].pressed);
+      const start = !!(p.buttons[9] && p.buttons[9].pressed);
+
+      if (binding === INPUT.left && (ax < -dz || dpadLeft)) return true;
+      if (binding === INPUT.right && (ax > dz || dpadRight)) return true;
+      if (binding === INPUT.up && (ay < -dz || dpadUp)) return true;
+      if (binding === INPUT.down && (ay > dz || dpadDown)) return true;
+      if (binding === INPUT.jump && (btnA || btnB || l2 || r2)) return true;
+      if (binding === INPUT.run && (btnX || btnY || l1 || r1)) return true;
+      if (binding === INPUT.confirm && (btnA || start || l2 || r2)) return true;
+      if (binding === INPUT.back && (btnB || select)) return true;
+      if (binding === INPUT.pause && start) return true;
+      if (binding === INPUT.restart && select) return true;
+    }
+    return false;
+  }
+
   function anyInputDown(binding) {
     const keys = binding?.keys ?? [];
     if (keys.some((k) => isKeyDown(k))) return true;
@@ -181,7 +221,9 @@ export function createGameCore() {
     if (buttons.some((b) => isGamepadButtonDown(b))) return true;
 
     const sticks = binding?.sticks ?? [];
-    return sticks.some((stick) => stickBindingDown(stick));
+    if (sticks.some((stick) => stickBindingDown(stick))) return true;
+
+    return anyGamepadPolledDown(binding);
   }
 
   function onAnyInputPress(binding, fn) {
