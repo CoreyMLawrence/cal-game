@@ -892,17 +892,17 @@ export function registerGameScene(ctx) {
     const _cGrassBushLight = rgb(68, 160, 72);
     const _cGrassBushFlower = rgb(255, 220, 100);
 
-    const _cDesertSky = rgb(levelTheme.skyBottom.r, levelTheme.skyBottom.g, levelTheme.skyBottom.b);
-    const _cDesertSun = rgb(levelTheme.sun.r, levelTheme.sun.g, levelTheme.sun.b);
+    const _cDesertSky = WORLD_THEMES.desert?.skyBottom ?? rgb(255, 238, 184);
+    const _cDesertSun = WORLD_THEMES.desert?.sun ?? rgb(255, 234, 132);
     const _cDesertPyr1L = rgb(210, 160, 88);
     const _cDesertPyr1R = rgb(186, 136, 68);
     const _cDesertPyr2L = rgb(218, 170, 98);
     const _cDesertPyr2R = rgb(194, 144, 76);
     const _cDesertPyrRidge = rgb(130, 92, 44);
-    const _cDesertDuneDark = rgb(levelTheme.duneDark.r, levelTheme.duneDark.g, levelTheme.duneDark.b);
-    const _cDesertDuneLight = rgb(levelTheme.duneLight.r, levelTheme.duneLight.g, levelTheme.duneLight.b);
+    const _cDesertDuneDark = WORLD_THEMES.desert?.duneDark ?? rgb(212, 160, 78);
+    const _cDesertDuneLight = WORLD_THEMES.desert?.duneLight ?? rgb(234, 186, 100);
 
-    const _cCloudSky = rgb(levelTheme.skyTop.r, levelTheme.skyTop.g, levelTheme.skyTop.b);
+    const _cCloudSky = WORLD_THEMES.cloud?.skyTop ?? rgb(90, 176, 232);
     const _cCloudHaze = rgb(255, 222, 185);
     const _cCloudSun = rgb(255, 238, 180);
     const _cCloudWhite = rgb(255, 255, 255);
