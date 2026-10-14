@@ -2161,58 +2161,106 @@ export function registerGameScene(ctx) {
       }
     }
 
-    // HUD.
-    const hudScore = add([
-      text("SCORE 0", { size: 16 }),
+    // HUD - Retro Mario Arcade Plates
+    add([
+      rect(210, 62, { radius: 8 }),
       pos(12, 10),
+      color(15, 20, 32),
+      opacity(0.78),
+      outline({ width: 2, color: rgb(240, 190, 40) }),
+      fixed(),
+      z(4999),
+    ]);
+
+    add([
+      text("SCORE", { size: 12 }),
+      pos(22, 17),
+      color(240, 190, 40),
       fixed(),
       z(5000),
     ]);
+
+    const hudScore = add([
+      text("000000", { size: 15 }),
+      pos(76, 15),
+      color(255, 255, 255),
+      fixed(),
+      z(5000),
+    ]);
+
     const hudCoinIcon = add([
       sprite("coin"),
-      pos(12, 34),
+      pos(22, 39),
       fixed(),
       scale(0.65),
       z(5000),
     ]);
+
     const hudCoins = add([
-      text("x0", { size: 16 }),
-      pos(42, 36),
+      text("x00", { size: 15 }),
+      pos(46, 40),
+      color(255, 230, 80),
       fixed(),
       z(5000),
     ]);
+
     const hudHeartIcon = add([
       sprite("heart"),
-      pos(12, 58),
+      pos(118, 39),
       fixed(),
-      scale(1),
+      scale(0.9),
       z(5000),
     ]);
+
     const hudLives = add([
-      text(`x${run.lives}`, { size: 16 }),
-      pos(42, 60),
+      text(`x${run.lives}`, { size: 15 }),
+      pos(146, 40),
+      color(255, 255, 255),
       fixed(),
       z(5000),
     ]);
+
+    // Top-Right Timer & Power Badge Plate
+    add([
+      rect(210, 62, { radius: 8 }),
+      pos(width() - 222, 10),
+      color(15, 20, 32),
+      opacity(0.78),
+      outline({ width: 2, color: rgb(240, 190, 40) }),
+      fixed(),
+      z(4999),
+    ]);
+
+    add([
+      text("TIME", { size: 12 }),
+      pos(width() - 212, 17),
+      color(240, 190, 40),
+      fixed(),
+      z(5000),
+    ]);
+
     const hudTime = add([
-      text("", { size: 16 }),
-      pos(width() - 12, 10),
-      anchor("topright"),
-      fixed(),
-      z(5000),
-    ]);
-    const hudPower = add([
-      text("", { size: 16 }),
-      pos(width() - 12, 34),
+      text("300", { size: 15 }),
+      pos(width() - 22, 15),
       anchor("topright"),
       color(255, 255, 255),
       fixed(),
       z(5000),
     ]);
-    const hudAudio = add([
-      text("", { size: 16 }),
-      pos(width() - 12, 58),
+
+    add([
+      text("POWER", { size: 12 }),
+      pos(width() - 212, 40),
+      color(170, 185, 210),
+      fixed(),
+      z(5000),
+    ]);
+
+    const hudPower = add([
+      text("READY", { size: 14 }),
+      pos(width() - 22, 39),
       anchor("topright"),
+      color(255, 255, 255),
       fixed(),
       z(5000),
     ]);
@@ -2919,48 +2967,46 @@ export function registerGameScene(ctx) {
       const now = time();
 
       // HUD.
-      setHudText(hudScore, `SCORE ${run.score}`);
-      setHudText(hudCoins, `x${run.coins}`);
+      setHudText(hudScore, run.score.toString().padStart(6, "0"));
+      setHudText(hudCoins, `x${run.coins.toString().padStart(2, "0")}`);
       setHudText(hudLives, `x${run.lives}`);
-      setHudText(
-        hudTime,
-        `TIME ${Math.max(0, Math.floor(timeLeft)).toString().padStart(3, "0")}`,
-      );
+      const secLeft = Math.max(0, Math.floor(timeLeft));
+      setHudText(hudTime, secLeft.toString().padStart(3, "0"));
+      if (secLeft < 25) {
+        hudTime.color = Math.floor(time() * 4) % 2 === 0 ? rgb(255, 75, 75) : rgb(255, 255, 255);
+      } else {
+        hudTime.color = rgb(255, 255, 255);
+      }
+
       let wingActive = run.power === "winged" && run.wingSecondsLeft > 0;
       let forgeActive = run.power === "forged" && run.forgeSecondsLeft > 0;
       let sandstormActive =
         run.power === "sandstorm" && run.sandstormSecondsLeft > 0;
       if (run.power === "charged") {
-        setHudText(hudPower, "POWER CHARGED");
+        setHudText(hudPower, "[ CHARGED ]");
         setHudPowerMode("charged");
       } else if (wingActive) {
         setHudText(
           hudPower,
-          `POWER WING ${Math.max(0, Math.ceil(run.wingSecondsLeft))}s`,
+          `[ WINGS ${Math.max(0, Math.ceil(run.wingSecondsLeft))}s ]`,
         );
         setHudPowerMode("winged");
       } else if (forgeActive) {
         setHudText(
           hudPower,
-          `POWER FORGE ${Math.max(0, Math.ceil(run.forgeSecondsLeft))}s`,
+          `[ FORGE ${Math.max(0, Math.ceil(run.forgeSecondsLeft))}s ]`,
         );
         setHudPowerMode("forged");
       } else if (sandstormActive) {
         setHudText(
           hudPower,
-          `POWER SAND ${Math.max(0, Math.ceil(run.sandstormSecondsLeft))}s`,
+          `[ SAND ${Math.max(0, Math.ceil(run.sandstormSecondsLeft))}s ]`,
         );
         setHudPowerMode("sandstorm");
       } else {
-        setHudText(hudPower, "POWER —");
+        setHudText(hudPower, "— READY —");
         setHudPowerMode("normal");
       }
-      if (pauseActive) setHudText(hudAudio, "PAUSED");
-      else
-        setHudText(
-          hudAudio,
-          settings.audio ? "ESC/P: PAUSE • M: MUTE" : "ESC/P: PAUSE • M: UNMUTE",
-        );
 
       aura.pos.x = player.pos.x + tileSize * 0.5;
       aura.pos.y = player.pos.y + tileSize * 0.5;

@@ -29,8 +29,25 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
   function ensureAudioReady() {
     if (!settings.audio) return;
     try {
-      if (audioCtx.state === "suspended") audioCtx.resume();
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume().then(() => {
+          if (bgm && bgm.desiredTrack) bgm.refresh();
+        }).catch(() => {});
+      }
     } catch {}
+  }
+
+  if (typeof window !== "undefined") {
+    const unlock = () => {
+      ensureAudioReady();
+      if (bgm && bgm.desiredTrack) bgm.refresh();
+      window.removeEventListener("keydown", unlock);
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("touchstart", unlock);
+    };
+    window.addEventListener("keydown", unlock, { passive: true });
+    window.addEventListener("pointerdown", unlock, { passive: true });
+    window.addEventListener("touchstart", unlock, { passive: true });
   }
 
   // 32-harmonic Fourier bandlimited pulse waves (Mouse-Squad gold standard)
@@ -587,17 +604,27 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
 
     function start(name) {
       if (!settings.audio) return;
+      ensureAudioReady();
       const newTrack = getTrack(name);
       if (!newTrack) return;
 
       if (currentTrackName === name && intervalId) return;
 
-      stop(0.12);
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
 
       currentTrackName = name;
       track = newTrack;
       step = 0;
       nextStepTime = audioCtx.currentTime + 0.04;
+
+      // Unmute and ramp BGM bus to full volume
+      const now = audioCtx.currentTime;
+      audioBus.bgm.gain.cancelScheduledValues(now);
+      audioBus.bgm.gain.setValueAtTime(audioBus.bgm.gain.value, now);
+      audioBus.bgm.gain.linearRampToValueAtTime(BGM_BUS_GAIN, now + 0.05);
 
       intervalId = setInterval(scheduleNotes, lookaheadMs);
       scheduleNotes();
@@ -618,12 +645,6 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
         audioBus.bgm.gain.cancelScheduledValues(now);
         audioBus.bgm.gain.setValueAtTime(audioBus.bgm.gain.value, now);
         audioBus.bgm.gain.linearRampToValueAtTime(0.0001, now + fade);
-        setTimeout(() => {
-          if (!intervalId) {
-            audioBus.bgm.gain.cancelScheduledValues(audioCtx.currentTime);
-            audioBus.bgm.gain.setValueAtTime(BGM_BUS_GAIN, audioCtx.currentTime);
-          }
-        }, Math.ceil((fade + 0.05) * 1000));
       }
     }
 
