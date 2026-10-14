@@ -125,6 +125,96 @@ export function registerWorldMapScene(ctx) {
       speed: rand(1.3, 3.3),
     }));
 
+    // Precomputed zero-GC connection paths
+    const precomputedConnections = world.connections.map((c) => {
+      const from = getNode(c.fromLevelId);
+      const to = getNode(c.toLevelId);
+      if (!from || !to) return null;
+      const p0 = from.pos;
+      const p1 = c.control ?? from.pos.add(to.pos).scale(0.5).add(0, -80);
+      const p2 = to.pos;
+      const dots = [];
+      const numDots = 18;
+      for (let i = 0; i <= numDots; i++) {
+        const t = i / numDots;
+        const a = (1 - t) * (1 - t);
+        const b = 2 * (1 - t) * t;
+        const cVal = t * t;
+        dots.push(vec2(
+          p0.x * a + p1.x * b + p2.x * cVal,
+          p0.y * a + p1.y * b + p2.y * cVal,
+        ));
+      }
+      return {
+        toLevelId: c.toLevelId,
+        shadowP1: vec2(from.pos.x + 2, from.pos.y + 2),
+        shadowP2: vec2(to.pos.x + 2, to.pos.y + 2),
+        dots,
+      };
+    }).filter(Boolean);
+
+    // Precomputed zero-GC rainbow arch
+    const rainbowColors = [
+      rgb(255, 85, 85),
+      rgb(255, 160, 50),
+      rgb(255, 225, 60),
+      rgb(75, 215, 85),
+      rgb(65, 185, 255),
+      rgb(140, 105, 245),
+    ];
+    const precomputedRainbow = rainbowColors.map((col, i) => {
+      const p0 = vec2(60, 240 + i * 5);
+      const p1 = vec2(480, 60 + i * 5);
+      const p2 = vec2(900, 240 + i * 5);
+      const pts = [];
+      const steps = 30;
+      for (let s = 0; s < steps; s++) {
+        const t = s / steps;
+        const a = (1 - t) * (1 - t);
+        const b = 2 * (1 - t) * t;
+        const cVal = t * t;
+        pts.push(vec2(
+          p0.x * a + p1.x * b + p2.x * cVal,
+          p0.y * a + p1.y * b + p2.y * cVal,
+        ));
+      }
+      return { col, pts };
+    });
+
+    const GRASSY_MAP_TREE_COORDS = [
+      [120, 320, 1.1],
+      [160, 395, 0.9],
+      [285, 380, 1.0],
+      [320, 270, 0.9],
+      [430, 335, 1.1],
+      [640, 315, 1.0],
+      [675, 210, 0.85],
+      [745, 345, 1.1],
+      [835, 310, 1.0],
+      [930, 235, 0.95],
+    ];
+
+    function drawSmwHill(x, y, r, hillCol, eyeCol) {
+      drawCircle({ pos: vec2(x, y), radius: r, color: hillCol, fixed: true });
+      drawRect({ pos: vec2(x - 5, y - r + 12), width: 3, height: 7, radius: 1, color: eyeCol, fixed: true });
+      drawRect({ pos: vec2(x + 2, y - r + 12), width: 3, height: 7, radius: 1, color: eyeCol, fixed: true });
+    }
+
+    function drawSmwTree(x, y, s = 1) {
+      drawRect({ pos: vec2(x - 3 * s, y + 6 * s), width: 6 * s, height: 10 * s, color: rgb(120, 78, 42), fixed: true });
+      drawCircle({ pos: vec2(x, y + 1 * s), radius: 14 * s, color: rgb(35, 125, 48), fixed: true });
+      drawCircle({ pos: vec2(x, y), radius: 13 * s, color: rgb(58, 188, 76), fixed: true });
+      drawCircle({ pos: vec2(x - 3 * s, y - 4 * s), radius: 6 * s, color: rgb(110, 230, 125), fixed: true });
+      drawRect({ pos: vec2(x - 4 * s, y - 3 * s), width: 2 * s, height: 6 * s, radius: 1, color: rgb(10, 35, 15), fixed: true });
+      drawRect({ pos: vec2(x + 2 * s, y - 3 * s), width: 2 * s, height: 6 * s, radius: 1, color: rgb(10, 35, 15), fixed: true });
+    }
+
+    function drawMarioCloud(x, y, scale = 1) {
+      drawEllipse({ pos: vec2(x, y), radiusX: 42 * scale, radiusY: 15 * scale, color: rgb(255, 255, 255), opacity: 0.92, fixed: true });
+      drawCircle({ pos: vec2(x - 14 * scale, y - 6 * scale), radius: 16 * scale, color: rgb(255, 255, 255), opacity: 0.95, fixed: true });
+      drawCircle({ pos: vec2(x + 12 * scale, y - 8 * scale), radius: 18 * scale, color: rgb(255, 255, 255), opacity: 0.95, fixed: true });
+    }
+
     function drawGrassyMapBackground() {
       // Deep blue ocean background
       drawRect({
@@ -219,124 +309,10 @@ export function registerWorldMapScene(ctx) {
         fixed: true,
       });
 
-      // SMW Hills with Eyes
-      function drawSmwHill(x, y, r, hillCol, eyeCol) {
-        drawCircle({
-          pos: vec2(x, y),
-          radius: r,
-          color: hillCol,
-          fixed: true,
-        });
-        drawRect({
-          pos: vec2(x - 5, y - r + 12),
-          width: 3,
-          height: 7,
-          radius: 1,
-          color: eyeCol,
-          fixed: true,
-        });
-        drawRect({
-          pos: vec2(x + 2, y - r + 12),
-          width: 3,
-          height: 7,
-          radius: 1,
-          color: eyeCol,
-          fixed: true,
-        });
-      }
-
       drawSmwHill(370, 260, 42, rgb(48, 160, 72), rgb(12, 45, 20));
       drawSmwHill(710, 240, 48, rgb(60, 185, 82), rgb(12, 45, 20));
 
-      // SMW Trees with vertical eyes!
-      function drawSmwTree(x, y, s = 1) {
-        // Trunk
-        drawRect({
-          pos: vec2(x - 3 * s, y + 6 * s),
-          width: 6 * s,
-          height: 10 * s,
-          color: rgb(120, 78, 42),
-          fixed: true,
-        });
-        // 3D Shadow
-        drawCircle({
-          pos: vec2(x, y + 1 * s),
-          radius: 14 * s,
-          color: rgb(35, 125, 48),
-          fixed: true,
-        });
-        // Main green puff
-        drawCircle({
-          pos: vec2(x, y),
-          radius: 13 * s,
-          color: rgb(58, 188, 76),
-          fixed: true,
-        });
-        // Highlight
-        drawCircle({
-          pos: vec2(x - 3 * s, y - 4 * s),
-          radius: 6 * s,
-          color: rgb(110, 230, 125),
-          fixed: true,
-        });
-        // Eyes
-        drawRect({
-          pos: vec2(x - 4 * s, y - 3 * s),
-          width: 2 * s,
-          height: 6 * s,
-          radius: 1,
-          color: rgb(10, 35, 15),
-          fixed: true,
-        });
-        drawRect({
-          pos: vec2(x + 2 * s, y - 3 * s),
-          width: 2 * s,
-          height: 6 * s,
-          radius: 1,
-          color: rgb(10, 35, 15),
-          fixed: true,
-        });
-      }
-
-      const treeCoords = [
-        [120, 320, 1.1],
-        [160, 395, 0.9],
-        [285, 380, 1.0],
-        [320, 270, 0.9],
-        [430, 335, 1.1],
-        [640, 315, 1.0],
-        [675, 210, 0.85],
-        [745, 345, 1.1],
-        [835, 310, 1.0],
-        [930, 235, 0.95],
-      ];
-      for (const [tx, ty, ts] of treeCoords) drawSmwTree(tx, ty, ts);
-
-      // Drifting cartoon Mario clouds in the upper sky
-      function drawMarioCloud(x, y, scale = 1) {
-        drawEllipse({
-          pos: vec2(x, y),
-          radiusX: 42 * scale,
-          radiusY: 15 * scale,
-          color: rgb(255, 255, 255),
-          opacity: 0.92,
-          fixed: true,
-        });
-        drawCircle({
-          pos: vec2(x - 14 * scale, y - 6 * scale),
-          radius: 16 * scale,
-          color: rgb(255, 255, 255),
-          opacity: 0.95,
-          fixed: true,
-        });
-        drawCircle({
-          pos: vec2(x + 12 * scale, y - 8 * scale),
-          radius: 18 * scale,
-          color: rgb(255, 255, 255),
-          opacity: 0.95,
-          fixed: true,
-        });
-      }
+      for (const [tx, ty, ts] of GRASSY_MAP_TREE_COORDS) drawSmwTree(tx, ty, ts);
 
       drawMarioCloud(180 + Math.sin(time() * 0.4) * 12, 95, 0.95);
       drawMarioCloud(510 + Math.sin(time() * 0.35 + 1) * 16, 80, 1.1);
@@ -502,26 +478,13 @@ export function registerWorldMapScene(ctx) {
         fixed: true,
       });
 
-      // Rainbow Bridge arching across the sky
-      const rainbowColors = [
-        rgb(255, 85, 85),
-        rgb(255, 160, 50),
-        rgb(255, 225, 60),
-        rgb(75, 215, 85),
-        rgb(65, 185, 255),
-        rgb(140, 105, 245),
-      ];
-      for (let i = 0; i < rainbowColors.length; i++) {
-        const p0 = vec2(60, 240 + i * 5);
-        const p1 = vec2(480, 60 + i * 5);
-        const p2 = vec2(900, 240 + i * 5);
-        const steps = 30;
-        for (let s = 0; s < steps; s++) {
-          const pt = quadBezier(p0, p1, p2, s / steps);
+      // Rainbow Bridge arching across the sky (zero-GC precomputed)
+      for (const rb of precomputedRainbow) {
+        for (let s = 0; s < rb.pts.length; s++) {
           drawCircle({
-            pos: pt,
+            pos: rb.pts[s],
             radius: 4,
-            color: rainbowColors[i],
+            color: rb.col,
             opacity: 0.55,
             fixed: true,
           });
@@ -820,38 +783,29 @@ export function registerWorldMapScene(ctx) {
     }
 
     function drawConnections() {
-      for (const c of world.connections) {
-        const from = getNode(c.fromLevelId);
-        const to = getNode(c.toLevelId);
-        if (!from || !to) continue;
-
-        const active = isUnlocked(to);
+      for (const c of precomputedConnections) {
+        const toNode = getNode(c.toLevelId);
+        const active = isUnlocked(toNode);
         const pathCol = active ? theme.pathActive : theme.pathInactive;
 
-        // Soft shadow under path.
+        // Soft shadow under path
         drawLine({
-          p1: from.pos.add(2, 2),
-          p2: to.pos.add(2, 2),
+          p1: c.shadowP1,
+          p2: c.shadowP2,
           width: 8,
           color: theme.nodeShadow,
           opacity: 0.16,
           fixed: true,
         });
 
-        // Dotted curve (SMW-ish).
-        const p0 = from.pos;
-        const p1 = c.control ?? from.pos.add(to.pos).scale(0.5).add(0, -80);
-        const p2 = to.pos;
-
-        const dots = 18;
-        for (let i = 0; i <= dots; i++) {
-          const t = i / dots;
-          const p = quadBezier(p0, p1, p2, t);
+        // Precomputed dotted SMW curve
+        const dotOpacity = active ? 0.95 : 0.55;
+        for (let i = 0; i < c.dots.length; i++) {
           drawCircle({
-            pos: p,
+            pos: c.dots[i],
             radius: 3.1,
             color: pathCol,
-            opacity: active ? 0.95 : 0.55,
+            opacity: dotOpacity,
             fixed: true,
           });
         }

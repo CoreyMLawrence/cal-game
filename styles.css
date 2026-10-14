@@ -39,6 +39,10 @@ body {
   box-shadow: none;
   background: #000;
   outline: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .game:focus-visible {

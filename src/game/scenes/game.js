@@ -282,7 +282,6 @@ export function registerGameScene(ctx) {
         ...(moonRockDetail ? [moonRockDetail] : []),
         area(),
         body({ isStatic: true }),
-        perfCull(),
         "solid",
         ...extra,
       ];
@@ -341,7 +340,6 @@ export function registerGameScene(ctx) {
         sprite("ground-cloud"),
         area(),
         body({ isStatic: true }),
-        perfCull(),
         "solid",
         "platform",
         "cloudSemi",
@@ -607,6 +605,7 @@ export function registerGameScene(ctx) {
     const ENEMY_STOMP_ZONE_OFFSET_Y = 2;
     const ENEMY_STOMP_ZONE_HEIGHT = 16;
     const ENEMY_STOMP_ZONE_GRACE = 12;
+    const activeEnemies = [];
 
     function enemyDamageArea() {
       return area({
@@ -650,14 +649,22 @@ export function registerGameScene(ctx) {
             flightSpeed: opts.flightSpeed ?? 1.75,
             flightSwoopFactor: opts.flightSwoopFactor ?? 2.1,
             flightPhase: phase,
+            add() {
+              activeEnemies.push(this);
+            },
+            destroy() {
+              const idx = activeEnemies.indexOf(this);
+              if (idx !== -1) activeEnemies.splice(idx, 1);
+            },
             update() {
-              if (!this.home) this.home = this.pos.clone();
+              if (!this.home) this.home = { x: this.pos.x, y: this.pos.y };
               const t = time() * this.flightSpeed + this.flightPhase;
               const nextX = this.home.x + Math.sin(t) * this.flightRangeX;
               const nextY =
                 this.home.y + Math.sin(t * this.flightSwoopFactor) * this.flightRangeY;
               this.flipX = nextX > this.pos.x;
-              this.pos = vec2(nextX, nextY);
+              this.pos.x = nextX;
+              this.pos.y = nextY;
               if (this.pos.y > worldDeathY) destroy(this);
             },
           },
@@ -678,8 +685,15 @@ export function registerGameScene(ctx) {
             floatRangeY: opts.floatRangeY ?? 20,
             floatSpeed: opts.floatSpeed ?? 1.9,
             floatPhase: phase,
+            add() {
+              activeEnemies.push(this);
+            },
+            destroy() {
+              const idx = activeEnemies.indexOf(this);
+              if (idx !== -1) activeEnemies.splice(idx, 1);
+            },
             update() {
-              if (!this.home) this.home = this.pos.clone();
+              if (!this.home) this.home = { x: this.pos.x, y: this.pos.y };
               const t = time() * this.floatSpeed + this.floatPhase;
               this.pos.x = this.home.x;
               this.pos.y = this.home.y + Math.sin(t) * this.floatRangeY;
@@ -707,6 +721,7 @@ export function registerGameScene(ctx) {
           stackFollowers: [],
           topSprites: Array.isArray(opts.topSprites) ? opts.topSprites : [],
           add() {
+            activeEnemies.push(this);
             if (this.stackHeight <= 1) return;
             destroyEnemyStackFollowers(this);
             for (let i = 1; i < this.stackHeight; i++) {
@@ -741,6 +756,8 @@ export function registerGameScene(ctx) {
             }
           },
           destroy() {
+            const idx = activeEnemies.indexOf(this);
+            if (idx !== -1) activeEnemies.splice(idx, 1);
             destroyEnemyStackFollowers(this);
           },
         },
@@ -885,484 +902,319 @@ export function registerGameScene(ctx) {
 
     worldDeathY = level.levelHeight() + CONFIG.fallDeathPadding;
 
-    function addGrassyLevelBackdrop() {
-      const levelW = level.levelWidth();
-      const backdrop = add([pos(0, 0), z(-220)]);
+    const halfW = width() / 2;
+    const _dVec = vec2(0, 0);
+    const _tri1 = [vec2(0, 0), vec2(0, 0), vec2(0, 0)];
 
+    function dCircle(x, y, r, col, alpha = 1) {
+      _dVec.x = x;
+      _dVec.y = y;
+      drawCircle({ pos: _dVec, radius: r, color: col, opacity: alpha });
+    }
+
+    function dRect(x, y, w, h, col, alpha = 1, rad = 0) {
+      _dVec.x = x;
+      _dVec.y = y;
+      drawRect({ pos: _dVec, width: w, height: h, color: col, opacity: alpha, radius: rad });
+    }
+
+    function dTri(p1x, p1y, p2x, p2y, p3x, p3y, col, alpha = 1) {
+      _tri1[0].x = p1x;
+      _tri1[0].y = p1y;
+      _tri1[1].x = p2x;
+      _tri1[1].y = p2y;
+      _tri1[2].x = p3x;
+      _tri1[2].y = p3y;
+      drawPolygon({ pts: _tri1, color: col, opacity: alpha });
+    }
+
+    function drawGrassyBackdropDirect(left, right, levelW) {
       // Sky base
-      backdrop.add([
-        rect(levelW + 400, height() + 20),
-        pos(-200, -10),
-        color(126, 207, 247),
-        opacity(1),
-      ]);
+      dRect(left - 20, -10, width() + 40, height() + 20, rgb(126, 207, 247));
 
-      // Cheerful retro sun with soft atmospheric halo
-      backdrop.add([
-        circle(64),
-        pos(210, 80),
-        color(255, 238, 140),
-        opacity(0.35),
-      ]);
-      backdrop.add([
-        circle(42),
-        pos(210, 80),
-        color(255, 225, 90),
-        opacity(0.92),
-      ]);
-
-      // Distant rolling mountain ranges (layer z(-210))
-      const mountainLayer = add([pos(0, 0), z(-210)]);
-      const mountainStep = 240;
-      for (let x = -60; x < levelW + 300; x += mountainStep) {
-        const mH = 150 + ((x * 13) % 45);
-        const mW = 280;
-        mountainLayer.add([
-          polygon([vec2(0, 0), vec2(mW * 0.5, -mH), vec2(mW, 0)]),
-          pos(x, height() - 70),
-          color(82, 148, 168),
-          opacity(0.55),
-        ]);
-        mountainLayer.add([
-          polygon([vec2(mW * 0.5, -mH), vec2(mW * 0.5, 0), vec2(mW, 0)]),
-          pos(x, height() - 70),
-          color(68, 126, 144),
-          opacity(0.55),
-        ]);
+      // Cheerful retro sun with atmospheric halo
+      const sunX = 210;
+      if (sunX + 70 >= left && sunX - 70 <= right) {
+        dCircle(sunX, 80, 64, rgb(255, 238, 140), 0.35);
+        dCircle(sunX, 80, 42, rgb(255, 225, 90), 0.92);
       }
 
-      // Midground rolling green hills (layer z(-205))
-      const hillLayer = add([pos(0, 0), z(-205)]);
+      // Distant rolling mountain ranges
+      const mountainStep = 240;
+      const mStart = Math.max(-60, Math.floor((left - 300) / mountainStep) * mountainStep);
+      const mEnd = Math.min(levelW + 300, right + 300);
+      const mBaseY = height() - 70;
+      for (let x = mStart; x <= mEnd; x += mountainStep) {
+        const mH = 150 + ((x * 13) % 45);
+        const mW = 280;
+        dTri(x, mBaseY, x + mW * 0.5, mBaseY - mH, x + mW, mBaseY, rgb(82, 148, 168), 0.55);
+        dTri(x + mW * 0.5, mBaseY - mH, x + mW * 0.5, mBaseY, x + mW, mBaseY, rgb(68, 126, 144), 0.55);
+      }
+
+      // Midground rolling green hills
       const hillStep = 180;
-      for (let x = -80; x < levelW + 280; x += hillStep) {
+      const hStart = Math.max(-80, Math.floor((left - 300) / hillStep) * hillStep);
+      const hEnd = Math.min(levelW + 280, right + 300);
+      const hillY = height() - 25;
+      for (let x = hStart; x <= hEnd; x += hillStep) {
         const hillRadius = 140 + ((x * 7) % 50);
-        const hillY = height() - 25;
-        hillLayer.add([
-          circle(hillRadius),
-          pos(x + hillRadius * 0.8, hillY + hillRadius * 0.45),
-          color(78, 166, 88),
-          opacity(0.85),
-        ]);
-        hillLayer.add([
-          circle(hillRadius * 0.75),
-          pos(x + hillRadius * 1.3, hillY + hillRadius * 0.5),
-          color(92, 184, 98),
-          opacity(0.80),
-        ]);
+        dCircle(x + hillRadius * 0.8, hillY + hillRadius * 0.45, hillRadius, rgb(78, 166, 88), 0.85);
+        dCircle(x + hillRadius * 1.3, hillY + hillRadius * 0.5, hillRadius * 0.75, rgb(92, 184, 98), 0.80);
       }
 
       // Structured fluffy cloud formations across the sky
-      const cloudLayer = add([pos(0, 0), z(-200)]);
-      for (let x = 60; x < levelW + 200; x += 260) {
+      const cloudStep = 260;
+      const cStart = Math.max(60, Math.floor((left - 200) / cloudStep) * cloudStep);
+      const cEnd = Math.min(levelW + 200, right + 200);
+      const white = rgb(255, 255, 255);
+      for (let x = cStart; x <= cEnd; x += cloudStep) {
         const cloudY = 45 + ((x * 11) % 75);
         const cw = 70 + ((x * 5) % 40);
-        cloudLayer.add([
-          rect(cw * 1.4, 22, { radius: 10 }),
-          pos(x, cloudY + 12),
-          color(255, 255, 255),
-          opacity(0.82),
-        ]);
-        cloudLayer.add([
-          circle(20),
-          pos(x + 22, cloudY + 12),
-          color(255, 255, 255),
-          opacity(0.88),
-        ]);
-        cloudLayer.add([
-          circle(28),
-          pos(x + 48, cloudY + 6),
-          color(255, 255, 255),
-          opacity(0.92),
-        ]);
-        cloudLayer.add([
-          circle(18),
-          pos(x + 78, cloudY + 14),
-          color(255, 255, 255),
-          opacity(0.85),
-        ]);
+        dRect(x, cloudY + 12, cw * 1.4, 22, white, 0.82, 10);
+        dCircle(x + 22, cloudY + 12, 20, white, 0.88);
+        dCircle(x + 48, cloudY + 6, 28, white, 0.92);
+        dCircle(x + 78, cloudY + 14, 18, white, 0.85);
       }
 
-      // Foreground bush clusters along the ground level (layer z(-190))
-      const bushLayer = add([pos(0, 0), z(-190)]);
+      // Foreground bush clusters along ground level
+      const bushStep = 150;
+      const bStart = Math.max(30, Math.floor((left - 100) / bushStep) * bushStep);
+      const bEnd = Math.min(levelW, right + 100);
       const groundFloorY = height() - 32;
-      for (let x = 30; x < levelW; x += 150) {
+      const bDark = rgb(56, 142, 60);
+      const bLight = rgb(68, 160, 72);
+      const bFlower = rgb(255, 220, 100);
+      for (let x = bStart; x <= bEnd; x += bushStep) {
         if ((x % 300) > 200) continue;
-        bushLayer.add([
-          circle(14),
-          pos(x + 10, groundFloorY),
-          color(56, 142, 60),
-          opacity(0.9),
-        ]);
-        bushLayer.add([
-          circle(18),
-          pos(x + 24, groundFloorY - 4),
-          color(68, 160, 72),
-          opacity(0.92),
-        ]);
-        bushLayer.add([
-          circle(13),
-          pos(x + 40, groundFloorY + 1),
-          color(56, 142, 60),
-          opacity(0.9),
-        ]);
-        bushLayer.add([
-          circle(2.5),
-          pos(x + 23, groundFloorY - 8),
-          color(255, 220, 100),
-          opacity(0.95),
-        ]);
+        dCircle(x + 10, groundFloorY, 14, bDark, 0.9);
+        dCircle(x + 24, groundFloorY - 4, 18, bLight, 0.92);
+        dCircle(x + 40, groundFloorY + 1, 13, bDark, 0.9);
+        dCircle(x + 23, groundFloorY - 8, 2.5, bFlower, 0.95);
       }
     }
 
-    function addDesertLevelBackdrop() {
+    function drawDesertBackdropDirect(left, right, levelW) {
       const sceneryDrop = tileSize;
+      dRect(
+        left - 20,
+        -10,
+        width() + 40,
+        height() + 20,
+        rgb(levelTheme.skyBottom.r, levelTheme.skyBottom.g, levelTheme.skyBottom.b),
+      );
 
-      function addFlatPyramid(
-        layer,
-        { x, baseY, width, height, leftColor, rightColor, alpha = 0.56 },
-      ) {
-        const half = width / 2;
-        layer.add([
-          polygon([vec2(0, 0), vec2(half, -height), vec2(half, 0)]),
-          pos(x - half, baseY),
-          color(leftColor.r, leftColor.g, leftColor.b),
-          opacity(alpha),
-        ]);
-        layer.add([
-          polygon([vec2(0, 0), vec2(half, -height), vec2(width, 0)]),
-          pos(x - half, baseY),
-          color(rightColor.r, rightColor.g, rightColor.b),
-          opacity(alpha),
-        ]);
-        layer.add([
-          rect(2, height),
-          pos(x - 1, baseY - height),
-          color(130, 92, 44),
-          opacity(alpha * 0.6),
-        ]);
+      const sunX = 220;
+      if (sunX + 70 >= left && sunX - 70 <= right) {
+        dCircle(sunX, 92, 56, rgb(levelTheme.sun.r, levelTheme.sun.g, levelTheme.sun.b), 0.94);
       }
-
-      const backdrop = add([pos(0, 0), z(-220)]);
-      const levelW = level.levelWidth();
-
-      backdrop.add([
-        rect(levelW + 400, height() + 20),
-        pos(-200, -10),
-        color(
-          levelTheme.skyBottom.r,
-          levelTheme.skyBottom.g,
-          levelTheme.skyBottom.b,
-        ),
-        opacity(1),
-      ]);
-
-      backdrop.add([
-        circle(56),
-        pos(220, 92),
-        color(levelTheme.sun.r, levelTheme.sun.g, levelTheme.sun.b),
-        opacity(0.94),
-      ]);
 
       const duneY = 420 + sceneryDrop;
-      backdrop.add([
-        circle(175),
-        pos(130, duneY),
-        color(
-          levelTheme.duneDark.r,
-          levelTheme.duneDark.g,
-          levelTheme.duneDark.b,
-        ),
-        opacity(0.92),
-      ]);
-      backdrop.add([
-        circle(210),
-        pos(390, duneY + 14),
-        color(
-          levelTheme.duneLight.r,
-          levelTheme.duneLight.g,
-          levelTheme.duneLight.b,
-        ),
-        opacity(0.9),
-      ]);
-      backdrop.add([
-        circle(190),
-        pos(700, duneY + 8),
-        color(
-          levelTheme.duneDark.r,
-          levelTheme.duneDark.g,
-          levelTheme.duneDark.b,
-        ),
-        opacity(0.92),
-      ]);
-      backdrop.add([
-        circle(220),
-        pos(980, duneY + 18),
-        color(
-          levelTheme.duneLight.r,
-          levelTheme.duneLight.g,
-          levelTheme.duneLight.b,
-        ),
-        opacity(0.9),
-      ]);
+      const dDark = rgb(levelTheme.duneDark.r, levelTheme.duneDark.g, levelTheme.duneDark.b);
+      const dLight = rgb(levelTheme.duneLight.r, levelTheme.duneLight.g, levelTheme.duneLight.b);
+      if (130 + 180 >= left && 130 - 180 <= right) dCircle(130, duneY, 175, dDark, 0.92);
+      if (390 + 220 >= left && 390 - 220 <= right) dCircle(390, duneY + 14, 210, dLight, 0.9);
+      if (700 + 200 >= left && 700 - 200 <= right) dCircle(700, duneY + 8, 190, dDark, 0.92);
+      if (980 + 230 >= left && 980 - 230 <= right) dCircle(980, duneY + 18, 220, dLight, 0.9);
 
-      const pyramidLayer = add([pos(0, 0), z(-215)]);
       const pyramidBaseY = 330 + sceneryDrop;
       const pyramidStep = 520;
-      for (let x = 140; x < levelW + 240; x += pyramidStep) {
-        addFlatPyramid(pyramidLayer, {
-          x: x + 86,
-          baseY: pyramidBaseY + 150,
-          width: 172,
-          height: 150,
-          leftColor: rgb(210, 160, 88),
-          rightColor: rgb(186, 136, 68),
-          alpha: 0.54,
-        });
-        addFlatPyramid(pyramidLayer, {
-          x: x + 292,
-          baseY: pyramidBaseY + 154,
-          width: 144,
-          height: 130,
-          leftColor: rgb(218, 170, 98),
-          rightColor: rgb(194, 144, 76),
-          alpha: 0.5,
-        });
+      const pStart = Math.max(140, Math.floor((left - 400) / pyramidStep) * pyramidStep);
+      const pEnd = Math.min(levelW + 240, right + 400);
+      const pyrCol1L = rgb(210, 160, 88);
+      const pyrCol1R = rgb(186, 136, 68);
+      const pyrCol2L = rgb(218, 170, 98);
+      const pyrCol2R = rgb(194, 144, 76);
+      const pyrRidge = rgb(130, 92, 44);
+
+      function drawDirectPyramid(px, py, pw, ph, cL, cR, alpha) {
+        const half = pw / 2;
+        const x0 = px - half;
+        dTri(x0, py, x0 + half, py - ph, x0 + half, py, cL, alpha);
+        dTri(x0, py, x0 + half, py - ph, x0 + pw, py, cR, alpha);
+        dRect(px - 1, py - ph, 2, ph, pyrRidge, alpha * 0.6);
+      }
+
+      for (let x = pStart; x <= pEnd; x += pyramidStep) {
+        drawDirectPyramid(x + 86, pyramidBaseY + 150, 172, 150, pyrCol1L, pyrCol1R, 0.54);
+        drawDirectPyramid(x + 292, pyramidBaseY + 154, 144, 130, pyrCol2L, pyrCol2R, 0.5);
       }
     }
 
-    function addCloudLevelBackdrop() {
-      const backdrop = add([pos(0, 0), z(-230)]);
-      const levelW = level.levelWidth();
+    function drawCloudBackdropDirect(left, right, levelW) {
+      dRect(
+        left - 20,
+        -10,
+        width() + 40,
+        height() + 20,
+        rgb(levelTheme.skyTop.r, levelTheme.skyTop.g, levelTheme.skyTop.b),
+      );
+      dRect(left - 20, height() - 140, width() + 40, 140, rgb(255, 218, 172), 0.42);
 
-      // Sky gradient base
-      backdrop.add([
-        rect(levelW + 400, height() + 20),
-        pos(-200, -10),
-        color(levelTheme.skyTop.r, levelTheme.skyTop.g, levelTheme.skyTop.b),
-        opacity(1),
-      ]);
+      const sunX = 320;
+      if (sunX + 80 >= left && sunX - 80 <= right) {
+        dCircle(sunX, height() - 130, 68, rgb(255, 235, 175), 0.55);
+      }
 
-      // Sunset / golden horizon glow
-      backdrop.add([
-        rect(levelW + 400, 140),
-        pos(-200, height() - 140),
-        color(255, 218, 172),
-        opacity(0.42),
-      ]);
-
-      // Golden sun resting on the cloud horizon
-      backdrop.add([
-        circle(68),
-        pos(320, height() - 130),
-        color(255, 235, 175),
-        opacity(0.55),
-      ]);
-
-      // Distant floating island silhouettes (layer z(-225))
-      const islandLayer = add([pos(0, 0), z(-225)]);
-      for (let x = 120; x < levelW + 300; x += 380) {
+      const islandStep = 380;
+      const iStart = Math.max(120, Math.floor((left - 200) / islandStep) * islandStep);
+      const iEnd = Math.min(levelW + 300, right + 200);
+      const islandCol = rgb(164, 150, 186);
+      const grassCol = rgb(128, 196, 140);
+      for (let x = iStart; x <= iEnd; x += islandStep) {
         const iy = 160 + ((x * 7) % 90);
-        islandLayer.add([
-          polygon([vec2(0, 0), vec2(45, 36), vec2(90, 0)]),
-          pos(x, iy),
-          color(164, 150, 186),
-          opacity(0.65),
-        ]);
-        islandLayer.add([
-          rect(96, 12, { radius: 6 }),
-          pos(x - 3, iy - 6),
-          color(128, 196, 140),
-          opacity(0.72),
-        ]);
+        dTri(x, iy, x + 45, iy + 36, x + 90, iy, islandCol, 0.65);
+        dRect(x - 3, iy - 6, 96, 12, grassCol, 0.72, 6);
       }
 
-      // Massive fluffy cloud bank deck at bottom of screen (layer z(-220))
-      const cloudDeck = add([pos(0, 0), z(-220)]);
-      for (let x = -100; x < levelW + 300; x += 110) {
+      const deckStep = 110;
+      const dStart = Math.max(-100, Math.floor((left - 150) / deckStep) * deckStep);
+      const dEnd = Math.min(levelW + 300, right + 150);
+      const cloudWhite = rgb(255, 255, 255);
+      const cloudPink = rgb(248, 238, 244);
+      const deckY = height() - 20;
+      for (let x = dStart; x <= dEnd; x += deckStep) {
         const r = 68 + ((x * 13) % 40);
-        cloudDeck.add([
-          circle(r),
-          pos(x + r * 0.8, height() - 20),
-          color(255, 255, 255),
-          opacity(0.88),
-        ]);
-        cloudDeck.add([
-          circle(r * 0.8),
-          pos(x + r * 1.2, height() - 5),
-          color(248, 238, 244),
-          opacity(0.92),
-        ]);
+        dCircle(x + r * 0.8, deckY, r, cloudWhite, 0.88);
+        dCircle(x + r * 1.2, deckY + 15, r * 0.8, cloudPink, 0.92);
       }
 
-      // Floating puffy cloud clusters across upper sky (layer z(-210))
-      const skyClouds = add([pos(0, 0), z(-210)]);
-      for (let x = 50; x < levelW + 200; x += 220) {
+      const skyStep = 220;
+      const sStart = Math.max(50, Math.floor((left - 200) / skyStep) * skyStep);
+      const sEnd = Math.min(levelW + 200, right + 200);
+      for (let x = sStart; x <= sEnd; x += skyStep) {
         const cy = 40 + ((x * 17) % 80);
         const cw = 75 + ((x * 3) % 35);
-        skyClouds.add([
-          rect(cw * 1.3, 20, { radius: 10 }),
-          pos(x, cy + 10),
-          color(255, 255, 255),
-          opacity(0.78),
-        ]);
-        skyClouds.add([
-          circle(22),
-          pos(x + 20, cy + 8),
-          color(255, 255, 255),
-          opacity(0.85),
-        ]);
-        skyClouds.add([
-          circle(30),
-          pos(x + 48, cy + 2),
-          color(255, 255, 255),
-          opacity(0.90),
-        ]);
-        skyClouds.add([
-          circle(18),
-          pos(x + 76, cy + 10),
-          color(255, 255, 255),
-          opacity(0.82),
-        ]);
+        dRect(x, cy + 10, cw * 1.3, 20, cloudWhite, 0.78, 10);
+        dCircle(x + 20, cy + 8, 22, cloudWhite, 0.85);
+        dCircle(x + 48, cy + 2, 30, cloudWhite, 0.90);
+        dCircle(x + 76, cy + 10, 18, cloudWhite, 0.82);
       }
     }
 
-    function addSpaceLevelBackdrop() {
-      const backdrop = add([pos(0, 0), z(-236)]);
-      const levelW = level.levelWidth();
-
-      backdrop.add([
-        rect(levelW + 400, height() + 20),
-        pos(-200, -10),
-        color(2, 6, 20),
-        opacity(1),
-      ]);
-
-      for (let i = 0; i < 170; i++) {
-        const starX = rand(-100, levelW + 100);
-        const starY = rand(0, height() - 44);
-        const starRadius = rand(0.65, 2.05);
-        const starAlpha = rand(0.28, 0.96);
-        const starPhase = rand(0, Math.PI * 2);
-        const starSpeed = rand(1.1, 3.6);
-
-        backdrop.add([
-          circle(starRadius),
-          pos(starX, starY),
-          color(255, 255, 255),
-          opacity(starAlpha),
-          perfCull({ margin: tileSize * 10, hide: false }),
-          {
-            update() {
-              this.opacity =
-                starAlpha * (0.58 + Math.sin(time() * starSpeed + starPhase) * 0.42);
-            },
-          },
-        ]);
+    const spaceStars = [];
+    const spaceBodies = [];
+    if (isSpaceLevel) {
+      for (let i = 0; i < 160; i++) {
+        spaceStars.push({
+          x: rand(-100, level.levelWidth() + 100),
+          y: rand(0, height() - 44),
+          r: rand(0.65, 2.05),
+          alpha: rand(0.28, 0.96),
+          phase: rand(0, Math.PI * 2),
+          speed: rand(1.1, 3.6),
+        });
       }
-
-      const distantBodies = add([pos(0, 0), z(-234)]);
       const bodyPalettes = [
         { body: rgb(110, 146, 204), glow: rgb(148, 182, 236) },
         { body: rgb(172, 126, 94), glow: rgb(220, 166, 124) },
         { body: rgb(92, 152, 160), glow: rgb(134, 196, 206) },
       ];
       let bodyX = width() + 120;
-      while (bodyX < levelW + 260) {
-        const paletteIndex = Math.min(
-          bodyPalettes.length - 1,
-          Math.floor(rand(0, bodyPalettes.length)),
-        );
-        const palette = bodyPalettes[paletteIndex];
-        const bodyRadius = rand(8, 18);
-        const bodyY = rand(48, 170);
-        const bodyAlpha = rand(0.24, 0.46);
-
-        distantBodies.add([
-          circle(bodyRadius + rand(2, 5)),
-          pos(bodyX, bodyY),
-          color(palette.glow.r, palette.glow.g, palette.glow.b),
-          opacity(bodyAlpha * 0.32),
-          perfCull({ margin: tileSize * 14 }),
-        ]);
-        distantBodies.add([
-          circle(bodyRadius),
-          pos(bodyX, bodyY),
-          color(palette.body.r, palette.body.g, palette.body.b),
-          opacity(bodyAlpha),
-          perfCull({ margin: tileSize * 14 }),
-        ]);
-
-        if (rand(0, 1) > 0.62) {
-          const miniMoonRadius = Math.max(2.2, bodyRadius * 0.22);
-          distantBodies.add([
-            circle(miniMoonRadius),
-            pos(
-              bodyX + rand(-bodyRadius * 2.4, bodyRadius * 2.4),
-              bodyY + rand(-bodyRadius * 1.4, bodyRadius * 1.4),
-            ),
-            color(188, 202, 222),
-            opacity(bodyAlpha * 0.74),
-            perfCull({ margin: tileSize * 14 }),
-          ]);
-        }
-
+      while (bodyX < level.levelWidth() + 260) {
+        const pIdx = Math.floor(rand(0, bodyPalettes.length));
+        const pal = bodyPalettes[pIdx];
+        const bRadius = rand(8, 18);
+        const bY = rand(48, 170);
+        const bAlpha = rand(0.24, 0.46);
+        const hasMoon = rand(0, 1) > 0.62;
+        spaceBodies.push({
+          x: bodyX,
+          y: bY,
+          r: bRadius,
+          glowPad: rand(2, 5),
+          bodyCol: pal.body,
+          glowCol: pal.glow,
+          alpha: bAlpha,
+          hasMoon,
+          mr: Math.max(2.2, bRadius * 0.22),
+          mx: rand(-bRadius * 2.4, bRadius * 2.4),
+          my: rand(-bRadius * 1.4, bRadius * 1.4),
+        });
         bodyX += rand(420, 620);
       }
     }
 
-    function addCastleLevelBackdrop({ includeEmbers = true } = {}) {
-      const backdrop = add([pos(0, 0), z(-230)]);
-      const levelW = level.levelWidth();
+    function drawSpaceBackdropDirect(left, right) {
+      dRect(left - 20, -10, width() + 40, height() + 20, rgb(2, 6, 20));
 
-      backdrop.add([
-        rect(levelW + 400, height() + 20),
-        pos(-200, -10),
-        color(22, 24, 34),
-        opacity(1),
-      ]);
-
-      backdrop.add([
-        rect(levelW + 400, 160),
-        pos(-200, height() - 160),
-        color(68, 26, 20),
-        opacity(0.38),
-      ]);
-
-      backdrop.add([
-        circle(44),
-        pos(170, 88),
-        color(255, 208, 150),
-        opacity(0.18),
-      ]);
-
-      const towerLayer = add([pos(0, 0), z(-225)]);
-      for (let x = -80; x < levelW + 240; x += 186) {
-        const towerH = rand(120, 200);
-        towerLayer.add([
-          rect(68, towerH),
-          pos(x, 378 - towerH),
-          color(54, 59, 72),
-          opacity(0.72),
-        ]);
-        towerLayer.add([
-          polygon([vec2(0, 0), vec2(34, -46), vec2(68, 0)]),
-          pos(x, 378 - towerH),
-          color(46, 50, 62),
-          opacity(0.72),
-        ]);
+      const curTime = time();
+      const whiteStar = rgb(255, 255, 255);
+      for (let i = 0; i < spaceStars.length; i++) {
+        const s = spaceStars[i];
+        if (s.x < left - 10 || s.x > right + 10) continue;
+        const alpha = s.alpha * (0.58 + Math.sin(curTime * s.speed + s.phase) * 0.42);
+        dCircle(s.x, s.y, s.r, whiteStar, alpha);
       }
 
-      if (includeEmbers) {
-        for (let i = 0; i < 26; i++) {
-          backdrop.add([
-            circle(rand(14, 34)),
-            pos(i * 80 + rand(-30, 20), height() - rand(20, 58)),
-            color(170, 64, 36),
-            opacity(rand(0.1, 0.22)),
-          ]);
+      for (let i = 0; i < spaceBodies.length; i++) {
+        const b = spaceBodies[i];
+        if (b.x < left - 50 || b.x > right + 50) continue;
+        dCircle(b.x, b.y, b.r + b.glowPad, b.glowCol, b.alpha * 0.32);
+        dCircle(b.x, b.y, b.r, b.bodyCol, b.alpha);
+        if (b.hasMoon) {
+          dCircle(b.x + b.mx, b.y + b.my, b.mr, rgb(188, 202, 222), b.alpha * 0.74);
         }
       }
     }
+
+    const castleEmbers = [];
+    if (isCastleLevel && !isBossLevel) {
+      for (let i = 0; i < 26; i++) {
+        castleEmbers.push({
+          x: i * 80 + rand(-30, 20),
+          y: height() - rand(20, 58),
+          r: rand(14, 34),
+          alpha: rand(0.1, 0.22),
+        });
+      }
+    }
+
+    function drawCastleBackdropDirect(left, right, levelW, includeEmbers) {
+      dRect(left - 20, -10, width() + 40, height() + 20, rgb(22, 24, 34));
+      dRect(left - 20, height() - 160, width() + 40, 160, rgb(68, 26, 20), 0.38);
+
+      const moonX = 170;
+      if (moonX + 60 >= left && moonX - 60 <= right) {
+        dCircle(moonX, 88, 44, rgb(255, 208, 150), 0.18);
+      }
+
+      const towerStep = 186;
+      const tStart = Math.max(-80, Math.floor((left - 150) / towerStep) * towerStep);
+      const tEnd = Math.min(levelW + 240, right + 150);
+      const wallCol = rgb(54, 59, 72);
+      const roofCol = rgb(46, 50, 62);
+      for (let x = tStart; x <= tEnd; x += towerStep) {
+        const towerH = 120 + ((x * 19) % 80);
+        dRect(x, 378 - towerH, 68, towerH, wallCol, 0.72);
+        dTri(x, 378 - towerH, x + 34, 378 - towerH - 46, x + 68, 378 - towerH, roofCol, 0.72);
+      }
+
+      if (includeEmbers) {
+        const emberCol = rgb(170, 64, 36);
+        for (let i = 0; i < castleEmbers.length; i++) {
+          const e = castleEmbers[i];
+          if (e.x < left - 40 || e.x > right + 40) continue;
+          dCircle(e.x, e.y, e.r, emberCol, e.alpha);
+        }
+      }
+    }
+
+    add([
+      z(-210),
+      {
+        draw() {
+          const camX = camPos().x;
+          const left = camX - halfW;
+          const right = camX + halfW;
+          const levelW = level.levelWidth();
+          if (isCastleLevel) drawCastleBackdropDirect(left, right, levelW, !isBossLevel);
+          else if (isDesertLevel) drawDesertBackdropDirect(left, right, levelW);
+          else if (isCloudLevel) drawCloudBackdropDirect(left, right, levelW);
+          else if (isSpaceLevel) drawSpaceBackdropDirect(left, right);
+          else drawGrassyBackdropDirect(left, right, levelW);
+        },
+      },
+    ]);
 
     function addMoonSetPieces() {
       if (!isSpaceLevel) return;
@@ -1429,11 +1281,6 @@ export function registerGameScene(ctx) {
       ]);
     }
 
-    if (isCastleLevel) addCastleLevelBackdrop({ includeEmbers: !isBossLevel });
-    else if (isDesertLevel) addDesertLevelBackdrop();
-    else if (isCloudLevel) addCloudLevelBackdrop();
-    else if (isSpaceLevel) addSpaceLevelBackdrop();
-    else addGrassyLevelBackdrop();
     addMoonSetPieces();
 
     const playerStartPos = level.tile2Pos(playerSpawnTile).add(0, -tileSize);
@@ -1517,31 +1364,115 @@ export function registerGameScene(ctx) {
       return time() < invincibleUntil;
     }
 
+    const PARTICLE_POOL_SIZE = 48;
+    const particlePool = [];
+    for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
+      particlePool.push({
+        active: false,
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        r: 2,
+        color: rgb(255, 255, 255),
+        alpha: 1,
+        maxLife: 0.35,
+        life: 0,
+      });
+    }
+
+    function spawnPooledParticle(x, y, vx, vy, r, col, life, alpha = 1) {
+      for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
+        const p = particlePool[i];
+        if (!p.active) {
+          p.active = true;
+          p.x = x;
+          p.y = y;
+          p.vx = vx;
+          p.vy = vy;
+          p.r = r;
+          p.color = col;
+          p.alpha = alpha;
+          p.maxLife = life;
+          p.life = life;
+          return p;
+        }
+      }
+      return null;
+    }
+
+    const _poolDrawPos = vec2(0, 0);
+    add([
+      z(1995),
+      {
+        update() {
+          const dtVal = dt();
+          for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
+            const p = particlePool[i];
+            if (!p.active) continue;
+            p.life -= dtVal;
+            if (p.life <= 0) {
+              p.active = false;
+              continue;
+            }
+            p.x += p.vx * dtVal;
+            p.y += p.vy * dtVal;
+          }
+        },
+        draw() {
+          const camX = camPos().x;
+          const left = camX - halfW - 24;
+          const right = camX + halfW + 24;
+          for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
+            const p = particlePool[i];
+            if (!p.active) continue;
+            if (p.x < left || p.x > right) continue;
+            const progress = 1 - p.life / p.maxLife;
+            const currentAlpha = p.alpha * (1 - progress * 0.7);
+            _poolDrawPos.x = p.x;
+            _poolDrawPos.y = p.y;
+            drawCircle({
+              pos: _poolDrawPos,
+              radius: p.r,
+              color: p.color,
+              opacity: currentAlpha,
+            });
+          }
+        },
+      },
+    ]);
+
+    const _whiteParticleCol = rgb(255, 255, 255);
+    const _jetpackParticleCol = rgb(205, 220, 238);
+
     function spawnDust(at) {
-      add([
-        circle(rand(2, 4)),
-        pos(at),
-        color(255, 255, 255),
-        opacity(0.25),
-        lifespan(0.35, { fade: 0.2 }),
-        move(vec2(rand(-1, 1), rand(-1, -0.2)), rand(40, 90)),
-        z(1500),
-      ]);
+      spawnPooledParticle(
+        at.x,
+        at.y,
+        rand(-40, 40),
+        rand(-50, -20),
+        rand(2, 4),
+        _whiteParticleCol,
+        0.35,
+        0.25,
+      );
     }
 
     function spawnJetpackPuff() {
       if (!jumpJetFx) return;
-      const basePos = player.pos.add(tileSize * 0.5, tileSize * 0.95);
-      for (let i = 0; i < 6; i++) {
-        add([
-          circle(rand(1.8, 3.6)),
-          pos(basePos.add(rand(-7, 7), rand(-2, 4))),
-          color(205, 220, 238),
-          opacity(rand(0.28, 0.62)),
-          lifespan(0.42, { fade: 0.22 }),
-          move(vec2(rand(-0.45, 0.45), 1), rand(55, 105)),
-          z(1560),
-        ]);
+      const baseX = player.pos.x + tileSize * 0.5;
+      const baseY = player.pos.y + tileSize * 0.95;
+      for (let i = 0; i < 4; i++) {
+        spawnPooledParticle(
+          baseX + rand(-6, 6),
+          baseY + rand(-2, 3),
+          rand(-25, 25),
+          rand(60, 100),
+          rand(1.8, 3.2),
+          _jetpackParticleCol,
+          0.38,
+          rand(0.28, 0.55),
+        );
       }
     }
 
@@ -1745,7 +1676,6 @@ export function registerGameScene(ctx) {
         sprite("used-block"),
         area(),
         body({ isStatic: true }),
-        perfCull(),
         "solid",
         "hiddenBlock",
       ], normalized);
@@ -1786,7 +1716,7 @@ export function registerGameScene(ctx) {
       }
     }
 
-    function isSolidCollider(obj, { allowCloudSemi = true } = {}) {
+    function isSolidCollider(obj, allowCloudSemi = true) {
       if (!obj || typeof obj.is !== "function") return false;
       if (typeof obj.exists === "function" && !obj.exists()) return false;
       if (!obj.is("solid") || obj.solidEnabled === false) return false;
@@ -1794,45 +1724,53 @@ export function registerGameScene(ctx) {
       return true;
     }
 
-    const solidTileQuery = vec2(0, 0);
-    function solidObjectsAtTile(tileX, tileY, { allowCloudSemi = true } = {}) {
-      if (tileX < 0 || tileY < 0) return [];
-      if (tileX >= level.numColumns() || tileY >= level.numRows()) return [];
-      solidTileQuery.x = tileX;
-      solidTileQuery.y = tileY;
-      return level
-        .getAt(solidTileQuery)
-        .filter((obj) => isSolidCollider(obj, { allowCloudSemi }));
+    const _solidTileQuery = vec2(0, 0);
+    const _reusableTileSolids = [];
+    function solidObjectsAtTile(tileX, tileY, allowCloudSemi = true) {
+      _reusableTileSolids.length = 0;
+      if (tileX < 0 || tileY < 0) return _reusableTileSolids;
+      if (tileX >= level.numColumns() || tileY >= level.numRows()) return _reusableTileSolids;
+      _solidTileQuery.x = tileX;
+      _solidTileQuery.y = tileY;
+      const objs = level.getAt(_solidTileQuery);
+      for (let i = 0; i < objs.length; i++) {
+        const obj = objs[i];
+        if (isSolidCollider(obj, allowCloudSemi)) {
+          _reusableTileSolids.push(obj);
+        }
+      }
+      return _reusableTileSolids;
     }
 
+    const _reusableSolidBox = { left: 0, top: 0, right: 0, bottom: 0 };
     function solidBounds(obj, tileX, tileY) {
       if (obj && typeof obj.worldArea === "function") {
         const box = obj.worldArea().bbox();
-        return {
-          left: box.pos.x,
-          top: box.pos.y,
-          right: box.pos.x + box.width,
-          bottom: box.pos.y + box.height,
-        };
+        _reusableSolidBox.left = box.pos.x;
+        _reusableSolidBox.top = box.pos.y;
+        _reusableSolidBox.right = box.pos.x + box.width;
+        _reusableSolidBox.bottom = box.pos.y + box.height;
+        return _reusableSolidBox;
       }
-      const tilePos = level.tile2Pos(vec2(tileX, tileY));
-      return {
-        left: tilePos.x,
-        top: tilePos.y,
-        right: tilePos.x + tileSize,
-        bottom: tilePos.y + tileSize,
-      };
+      const tx = tileX * tileSize;
+      const ty = tileY * tileSize;
+      _reusableSolidBox.left = tx;
+      _reusableSolidBox.top = ty;
+      _reusableSolidBox.right = tx + tileSize;
+      _reusableSolidBox.bottom = ty + tileSize;
+      return _reusableSolidBox;
     }
 
-    function playerBoxAt(pos = player.pos) {
+    const _reusablePlayerBox = { left: 0, top: 0, right: 0, bottom: 0 };
+    const _reusableStartBox = { left: 0, top: 0, right: 0, bottom: 0 };
+    function playerBoxAt(pos = player.pos, out = _reusablePlayerBox) {
       const left = pos.x + playerHitbox.offsetX;
       const top = pos.y + playerHitbox.offsetY;
-      return {
-        left,
-        top,
-        right: left + playerHitbox.width,
-        bottom: top + playerHitbox.height,
-      };
+      out.left = left;
+      out.top = top;
+      out.right = left + playerHitbox.width;
+      out.bottom = top + playerHitbox.height;
+      return out;
     }
 
     function clearGroundedState() {
@@ -1846,45 +1784,75 @@ export function registerGameScene(ctx) {
       playerGrounded = true;
       playerGroundObject = groundObj ?? null;
       playerGroundObjectPos =
-        groundObj && groundObj.exists() && groundObj.pos ? groundObj.pos.clone() : null;
+        groundObj && groundObj.exists() && groundObj.pos
+          ? { x: groundObj.pos.x, y: groundObj.pos.y }
+          : null;
       if (!wasGrounded) player.trigger("ground", groundObj ?? null);
     }
 
+    const _reusableCarryDelta = vec2(0, 0);
     function getGroundCarryDelta() {
+      _reusableCarryDelta.x = 0;
+      _reusableCarryDelta.y = 0;
       if (!playerGrounded || !playerGroundObject || !playerGroundObject.exists()) {
         clearGroundedState();
-        return vec2(0, 0);
+        return _reusableCarryDelta;
       }
-      if (!playerGroundObject.pos) return vec2(0, 0);
+      if (!playerGroundObject.pos) return _reusableCarryDelta;
       if (!playerGroundObjectPos) {
-        playerGroundObjectPos = playerGroundObject.pos.clone();
-        return vec2(0, 0);
+        playerGroundObjectPos = { x: playerGroundObject.pos.x, y: playerGroundObject.pos.y };
+        return _reusableCarryDelta;
       }
-      return playerGroundObject.pos.sub(playerGroundObjectPos);
+      _reusableCarryDelta.x = playerGroundObject.pos.x - playerGroundObjectPos.x;
+      _reusableCarryDelta.y = playerGroundObject.pos.y - playerGroundObjectPos.y;
+      playerGroundObjectPos.x = playerGroundObject.pos.x;
+      playerGroundObjectPos.y = playerGroundObject.pos.y;
+      return _reusableCarryDelta;
     }
 
-    function tryRevealHiddenBlockFromHead(startPos = player.pos, endPos = player.pos) {
+    function revealHiddenBlockXY(tileX, tileY) {
+      const key = `${tileX},${tileY}`;
+      if (!hiddenBlockTileKeys.has(key)) return false;
+      hiddenBlockTileKeys.delete(key);
+      const normalized = vec2(tileX, tileY);
+      const block = level.spawn([
+        sprite("used-block"),
+        area(),
+        body({ isStatic: true }),
+        "solid",
+        "hiddenBlock",
+      ], normalized);
+      playSfx("bump");
+      const y0 = block.pos.y;
+      tween(
+        y0,
+        y0 - 5,
+        0.08,
+        (y) => (block.pos.y = y),
+        easings.easeOutQuad,
+      ).then(() =>
+        tween(y0 - 5, y0, 0.08, (y) => (block.pos.y = y), easings.easeInQuad),
+      );
+      return true;
+    }
+
+    function tryRevealHiddenBlockFromHead(startPosX, startPosY, endPosX, endPosY) {
       if (hiddenBlockTileKeys.size === 0) return false;
-      const dx = endPos.x - startPos.x;
-      const dy = endPos.y - startPos.y;
+      const dx = endPosX - startPosX;
+      const dy = endPosY - startPosY;
       if (dy >= -1) return false;
 
       const sweepDistance = Math.max(Math.abs(dx), Math.abs(dy));
       const steps = Math.max(1, Math.ceil(sweepDistance / PLAYER_MOVE_SUBSTEP));
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
-        const sampleXBase = startPos.x + dx * t;
-        const sampleY = startPos.y + dy * t - 1;
-        const sampleXs = [
-          sampleXBase + tileSize * 0.18,
-          sampleXBase + tileSize * 0.5,
-          sampleXBase + tileSize * 0.82,
-        ];
+        const sampleXBase = startPosX + dx * t;
+        const sampleY = startPosY + dy * t - 1;
+        const sTileY = Math.floor(sampleY / tileSize);
 
-        for (const sampleX of sampleXs) {
-          const tilePos = level.pos2Tile(vec2(sampleX, sampleY));
-          if (revealHiddenBlock(tilePos)) return true;
-        }
+        if (revealHiddenBlockXY(Math.floor((sampleXBase + tileSize * 0.18) / tileSize), sTileY)) return true;
+        if (revealHiddenBlockXY(Math.floor((sampleXBase + tileSize * 0.5) / tileSize), sTileY)) return true;
+        if (revealHiddenBlockXY(Math.floor((sampleXBase + tileSize * 0.82) / tileSize), sTileY)) return true;
       }
       return false;
     }
@@ -1893,7 +1861,7 @@ export function registerGameScene(ctx) {
       if (Math.abs(stepX) <= PLAYER_SOLID_EPSILON) return;
       player.pos.x += stepX;
 
-      const box = playerBoxAt();
+      const box = playerBoxAt(player.pos, _reusablePlayerBox);
       const minTileY = Math.floor((box.top + PLAYER_SOLID_EPSILON) / tileSize);
       const maxTileY = Math.floor((box.bottom - PLAYER_SOLID_EPSILON) / tileSize);
 
@@ -1902,8 +1870,9 @@ export function registerGameScene(ctx) {
         let resolvedX = player.pos.x;
         let collided = false;
         for (let tileY = minTileY; tileY <= maxTileY; tileY++) {
-          const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
-          for (const solid of solids) {
+          const solids = solidObjectsAtTile(tileX, tileY, true);
+          for (let si = 0; si < solids.length; si++) {
+            const solid = solids[si];
             const solidBox = solidBounds(solid, tileX, tileY);
             if (box.bottom <= solidBox.top + PLAYER_SOLID_EPSILON) continue;
             if (box.top >= solidBox.bottom - PLAYER_SOLID_EPSILON) continue;
@@ -1927,8 +1896,9 @@ export function registerGameScene(ctx) {
       let resolvedX = player.pos.x;
       let collided = false;
       for (let tileY = minTileY; tileY <= maxTileY; tileY++) {
-        const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
-        for (const solid of solids) {
+        const solids = solidObjectsAtTile(tileX, tileY, true);
+        for (let si = 0; si < solids.length; si++) {
+          const solid = solids[si];
           const solidBox = solidBounds(solid, tileX, tileY);
           if (box.bottom <= solidBox.top + PLAYER_SOLID_EPSILON) continue;
           if (box.top >= solidBox.bottom - PLAYER_SOLID_EPSILON) continue;
@@ -1946,37 +1916,47 @@ export function registerGameScene(ctx) {
       }
     }
 
+    const _verticalStepResult = { landedObj: null, hitHead: false };
     function resolveVerticalStep(stepY) {
       if (Math.abs(stepY) <= PLAYER_SOLID_EPSILON) {
-        return { landedObj: null, hitHead: false };
+        _verticalStepResult.landedObj = null;
+        _verticalStepResult.hitHead = false;
+        return _verticalStepResult;
       }
-      const startPos = player.pos.clone();
+      const startPosX = player.pos.x;
+      const startPosY = player.pos.y;
       player.pos.y += stepY;
 
-      if (stepY < 0 && tryRevealHiddenBlockFromHead(startPos, player.pos.clone())) {
-        return { landedObj: null, hitHead: true };
+      if (stepY < 0 && tryRevealHiddenBlockFromHead(startPosX, startPosY, player.pos.x, player.pos.y)) {
+        _verticalStepResult.landedObj = null;
+        _verticalStepResult.hitHead = true;
+        return _verticalStepResult;
       }
 
-      const box = playerBoxAt();
+      const box = playerBoxAt(player.pos, _reusablePlayerBox);
       const minTileX = Math.floor((box.left + PLAYER_SOLID_EPSILON) / tileSize);
       const maxTileX = Math.floor((box.right - PLAYER_SOLID_EPSILON) / tileSize);
 
       if (stepY > 0) {
         const tileY = Math.floor((box.bottom - PLAYER_SOLID_EPSILON) / tileSize);
-        const startBox = playerBoxAt(startPos);
+        _reusableStartBox.left = startPosX + playerHitbox.offsetX;
+        _reusableStartBox.top = startPosY + playerHitbox.offsetY;
+        _reusableStartBox.right = _reusableStartBox.left + playerHitbox.width;
+        _reusableStartBox.bottom = _reusableStartBox.top + playerHitbox.height;
         let resolvedY = player.pos.y;
         let landedObj = null;
 
         for (let tileX = minTileX; tileX <= maxTileX; tileX++) {
-          const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
-          for (const solid of solids) {
+          const solids = solidObjectsAtTile(tileX, tileY, true);
+          for (let si = 0; si < solids.length; si++) {
+            const solid = solids[si];
             const solidBox = solidBounds(solid, tileX, tileY);
             if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
             if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
             if (box.top >= solidBox.bottom - PLAYER_SOLID_EPSILON) continue;
             if (box.bottom <= solidBox.top + PLAYER_SOLID_EPSILON) continue;
 
-            if (solid.is("cloudSemi") && startBox.bottom > solidBox.top + 1.5) continue;
+            if (solid.is("cloudSemi") && _reusableStartBox.bottom > solidBox.top + 1.5) continue;
 
             const targetY =
               solidBox.top - (playerHitbox.offsetY + playerHitbox.height) - PLAYER_SOLID_EPSILON;
@@ -1991,15 +1971,18 @@ export function registerGameScene(ctx) {
           player.pos.y = resolvedY;
           if (player.vel.y > 0) player.vel.y = 0;
         }
-        return { landedObj, hitHead: false };
+        _verticalStepResult.landedObj = landedObj;
+        _verticalStepResult.hitHead = false;
+        return _verticalStepResult;
       }
 
       const tileY = Math.floor((box.top + PLAYER_SOLID_EPSILON) / tileSize);
       let resolvedY = player.pos.y;
       let headObj = null;
       for (let tileX = minTileX; tileX <= maxTileX; tileX++) {
-        const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: false });
-        for (const solid of solids) {
+        const solids = solidObjectsAtTile(tileX, tileY, false);
+        for (let si = 0; si < solids.length; si++) {
+          const solid = solids[si];
           const solidBox = solidBounds(solid, tileX, tileY);
           if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
           if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
@@ -2018,45 +2001,54 @@ export function registerGameScene(ctx) {
         player.pos.y = resolvedY;
         if (player.vel.y < 0) player.vel.y = 0;
         player.trigger("headbutt", headObj);
-        return { landedObj: null, hitHead: true };
+        _verticalStepResult.landedObj = null;
+        _verticalStepResult.hitHead = true;
+        return _verticalStepResult;
       }
-      return { landedObj: null, hitHead: false };
+      _verticalStepResult.landedObj = null;
+      _verticalStepResult.hitHead = false;
+      return _verticalStepResult;
     }
 
     function snapPlayerToGround() {
-      const box = playerBoxAt();
-      const sampleXs = [
-        box.left + 1,
-        (box.left + box.right) * 0.5,
-        box.right - 1,
-      ];
-      const sampleY = box.bottom + PLAYER_GROUND_PROBE;
-      let best = null;
+      const box = playerBoxAt(player.pos, _reusablePlayerBox);
+      const bLeft = box.left;
+      const bRight = box.right;
+      const bBottom = box.bottom;
+      const sampleY = bBottom + PLAYER_GROUND_PROBE;
+      const tileY = Math.floor(sampleY / tileSize);
 
-      for (const sampleX of sampleXs) {
+      let bestObj = null;
+      let bestTargetY = Infinity;
+
+      for (let s = 0; s < 3; s++) {
+        const sampleX = s === 0 ? bLeft + 1 : (s === 1 ? (bLeft + bRight) * 0.5 : bRight - 1);
         const tileX = Math.floor(sampleX / tileSize);
-        const tileY = Math.floor(sampleY / tileSize);
-        const solids = solidObjectsAtTile(tileX, tileY, { allowCloudSemi: true });
-        for (const solid of solids) {
+        const solids = solidObjectsAtTile(tileX, tileY, true);
+        for (let si = 0; si < solids.length; si++) {
+          const solid = solids[si];
           const solidBox = solidBounds(solid, tileX, tileY);
-          if (box.right <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
-          if (box.left >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
-          if (solid.is("cloudSemi") && box.bottom > solidBox.top + 1.5) continue;
+          if (bRight <= solidBox.left + PLAYER_SOLID_EPSILON) continue;
+          if (bLeft >= solidBox.right - PLAYER_SOLID_EPSILON) continue;
+          if (solid.is("cloudSemi") && bBottom > solidBox.top + 1.5) continue;
 
-          const verticalDelta = solidBox.top - box.bottom;
+          const verticalDelta = solidBox.top - bBottom;
           if (verticalDelta < -PLAYER_GROUND_PROBE - PLAYER_SOLID_EPSILON) continue;
           if (verticalDelta > PLAYER_GROUND_PROBE + PLAYER_SOLID_EPSILON) continue;
 
           const targetY =
             solidBox.top - (playerHitbox.offsetY + playerHitbox.height) - PLAYER_SOLID_EPSILON;
-          if (!best || targetY < best.targetY) best = { obj: solid, targetY };
+          if (targetY < bestTargetY) {
+            bestTargetY = targetY;
+            bestObj = solid;
+          }
         }
       }
 
-      if (!best) return null;
-      player.pos.y = best.targetY;
+      if (!bestObj) return null;
+      player.pos.y = bestTargetY;
       if (player.vel.y > 0) player.vel.y = 0;
-      return best.obj;
+      return bestObj;
     }
 
     function triggerSpringBounce(spring) {
@@ -2544,7 +2536,6 @@ export function registerGameScene(ctx) {
     }
 
     // Camera: forward-biased follow that still allows backtracking.
-    const halfW = width() / 2;
     const maxCamCenterX = Math.max(halfW, level.levelWidth() - halfW);
     const camOffset = Math.round(width() * 0.2);
     const bossCamCenterX = level.levelWidth() / 2;
@@ -3048,16 +3039,16 @@ export function registerGameScene(ctx) {
         forgeSparkTimer -= frameDt;
         if (forgeSparkTimer <= 0) {
           forgeSparkTimer = 0.07 + rand(0, 0.05);
-          const sparkStart = player.pos.add(tileSize * 0.5 + rand(-9, 9), tileSize * 0.45);
-          add([
-            circle(rand(1.1, 2.3)),
-            pos(sparkStart),
-            color(255, rand(140, 196), rand(84, 118)),
-            opacity(rand(0.55, 0.9)),
-            lifespan(0.28, { fade: 0.2 }),
-            move(vec2(rand(-0.35, 0.35), -1), rand(42, 86)),
-            z(1995),
-          ]);
+          spawnPooledParticle(
+            player.pos.x + tileSize * 0.5 + rand(-9, 9),
+            player.pos.y + tileSize * 0.45,
+            rand(-15, 15),
+            rand(-70, -40),
+            rand(1.1, 2.3),
+            rgb(255, rand(140, 196), rand(84, 118)),
+            0.28,
+            rand(0.55, 0.9),
+          );
         }
       } else {
         forgeSparkTimer = 0;
@@ -3067,19 +3058,16 @@ export function registerGameScene(ctx) {
         sandstormSparkTimer -= frameDt;
         if (sandstormSparkTimer <= 0) {
           sandstormSparkTimer = 0.05 + rand(0, 0.06);
-          const swirlPos = player.pos.add(
-            tileSize * 0.5 + rand(-14, 14),
-            tileSize * 0.52 + rand(-10, 8),
+          spawnPooledParticle(
+            player.pos.x + tileSize * 0.5 + rand(-14, 14),
+            player.pos.y + tileSize * 0.52 + rand(-10, 8),
+            rand(-40, 40),
+            rand(-40, 40),
+            rand(1.3, 2.5),
+            rgb(rand(222, 255), rand(176, 222), rand(96, 136)),
+            0.32,
+            rand(0.48, 0.82),
           );
-          add([
-            circle(rand(1.3, 2.5)),
-            pos(swirlPos),
-            color(rand(222, 255), rand(176, 222), rand(96, 136)),
-            opacity(rand(0.48, 0.82)),
-            lifespan(0.32, { fade: 0.2 }),
-            move(vec2(rand(-0.8, 0.8), rand(-0.8, 0.8)), rand(36, 88)),
-            z(1995),
-          ]);
         }
       } else {
         sandstormSparkTimer = 0;
@@ -3159,14 +3147,14 @@ export function registerGameScene(ctx) {
           sandstormPulseTimer = 0.11;
           const pulseCenter = player.pos.add(tileSize * 0.5, tileSize * 0.5);
           const pulseRadius = tileSize * 1.68;
-          for (const enemy of get("enemy")) {
+          for (let ei = 0; ei < activeEnemies.length; ei++) {
+            const enemy = activeEnemies[ei];
             if (!enemy || !enemy.exists() || enemy.defeated) continue;
-            const enemyCenter = enemy.pos.add(
-              tileSize * 0.5,
-              tileSize * (0.5 - (Math.max(1, Math.floor(enemy.stackHeight ?? 1)) - 1) * 0.5),
-            );
-            const dx = pulseCenter.x - enemyCenter.x;
-            const dy = pulseCenter.y - enemyCenter.y;
+            const enemyX = enemy.pos.x + tileSize * 0.5;
+            const dx = pulseCenter.x - enemyX;
+            if (Math.abs(dx) > pulseRadius) continue;
+            const enemyY = enemy.pos.y + tileSize * (0.5 - (Math.max(1, Math.floor(enemy.stackHeight ?? 1)) - 1) * 0.5);
+            const dy = pulseCenter.y - enemyY;
             if (Math.hypot(dx, dy) > pulseRadius) continue;
             squashEnemy(enemy);
           }
@@ -3274,8 +3262,11 @@ export function registerGameScene(ctx) {
         (typeof player.isFalling === "function" && player.isFalling()) ||
         (player.vel && player.vel.y >= -20);
       if (isDescending) {
-        for (const enemy of get("enemy")) {
+        const px = player.pos.x;
+        for (let ei = 0; ei < activeEnemies.length; ei++) {
+          const enemy = activeEnemies[ei];
           if (!enemy || !enemy.exists() || enemy.defeated) continue;
+          if (Math.abs(enemy.pos.x - px) > 48) continue;
           if (!isPlayerStompingEnemy(enemy)) continue;
           squashEnemy(enemy);
           player.jump(CONFIG.bounceForce);
