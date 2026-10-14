@@ -213,15 +213,26 @@
   function height() {
     return _internalHeight;
   }
-  function camPos(p) {
+  function camPos(p, y) {
     if (p !== undefined) {
-      _camPos.x = p.x;
-      _camPos.y = p.y;
+      if (typeof p === "object" && p !== null) {
+        _camPos.x = Number(p.x) || 0;
+        _camPos.y = Number(p.y) || 0;
+      } else {
+        _camPos.x = Number(p) || 0;
+        if (y !== undefined) _camPos.y = Number(y) || 0;
+      }
     }
     return _camPos.clone();
   }
-  function camScale(s) {
-    if (s !== undefined) _camScale = s;
+  function camScale(s, sy) {
+    if (s !== undefined) {
+      if (typeof s === "object" && s !== null) {
+        _camScale = Number(s.x) || 1;
+      } else {
+        _camScale = Number(s) || 1;
+      }
+    }
     return _camScale;
   }
   function setGravity(g) {
