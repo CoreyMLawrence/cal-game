@@ -5,9 +5,9 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
   // - Smooth linear release envelopes to eliminate all pops and clicks
   // - Multi-channel lookahead scheduler (Melody w25, Harmony w50, Bass triangle, Arp w125, Percussion)
   // - Full preservation of original melodies and world variations (Desert, Cloud, Castle, Space)
-  const MASTER_ON_GAIN = 0.9;
-  const BGM_BUS_GAIN = 1.0;
-  const SFX_BUS_GAIN = 1.0;
+  const MASTER_ON_GAIN = 0.85;
+  const BGM_BUS_GAIN = 0.75;
+  const SFX_BUS_GAIN = 0.65;
 
   const audioBus = (() => {
     const ctx = audioCtx;
@@ -21,9 +21,19 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
 
     bgm.connect(master);
     sfx.connect(master);
-    master.connect(ctx.destination);
 
-    return { ctx, master, bgm, sfx };
+    // Fast-acting safety peak limiter to protect against OS/ALSA buffer clipping
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.setValueAtTime(-1.0, ctx.currentTime);
+    limiter.knee.setValueAtTime(0, ctx.currentTime);
+    limiter.ratio.setValueAtTime(20, ctx.currentTime);
+    limiter.attack.setValueAtTime(0.001, ctx.currentTime);
+    limiter.release.setValueAtTime(0.03, ctx.currentTime);
+
+    master.connect(limiter);
+    limiter.connect(ctx.destination);
+
+    return { ctx, master, bgm, sfx, limiter };
   })();
 
   function ensureAudioReady() {
@@ -31,23 +41,23 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     try {
       if (audioCtx.state === "suspended") {
         audioCtx.resume().then(() => {
-          if (bgm && bgm.desiredTrack) bgm.refresh();
+          if (bgm && bgm.desiredTrack) {
+            bgm.refresh(true);
+          }
         }).catch(() => {});
       }
     } catch {}
   }
 
   if (typeof window !== "undefined") {
-    const unlock = () => {
+    const handleGesture = () => {
       ensureAudioReady();
-      if (bgm && bgm.desiredTrack) bgm.refresh();
-      window.removeEventListener("keydown", unlock);
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("touchstart", unlock);
     };
-    window.addEventListener("keydown", unlock, { passive: true });
-    window.addEventListener("pointerdown", unlock, { passive: true });
-    window.addEventListener("touchstart", unlock, { passive: true });
+    // Keep active persistently (Mouse-Squad standard)
+    window.addEventListener("keydown", handleGesture, { passive: true });
+    window.addEventListener("pointerdown", handleGesture, { passive: true });
+    window.addEventListener("touchstart", handleGesture, { passive: true });
+    window.addEventListener("mousedown", handleGesture, { passive: true });
   }
 
   // 32-harmonic Fourier bandlimited pulse waves (Mouse-Squad gold standard)
@@ -108,73 +118,11 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     o.stop(start + duration + 0.02);
   }
 
-  // Pre-allocated noise buffer for punchy, click-free percussion
-  const noiseBuffer = (() => {
-    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = rand(-1, 1);
-    return buf;
-  })();
-
-  function playKick(when, vol = 0.20, destination = audioBus.bgm) {
-    if (!settings.audio) return;
-    tone(when, 0.08, 130, vol, "sine", 38, destination);
-  }
-
-  function playSnare(when, vol = 0.12, destination = audioBus.bgm) {
-    if (!settings.audio) return;
-    const ctx = audioCtx;
-    const start = Math.max(when, ctx.currentTime + 0.002);
-    const src = ctx.createBufferSource();
-    src.buffer = noiseBuffer;
-    src.loop = true;
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = "bandpass";
-    filter.frequency.setValueAtTime(1900, start);
-    filter.Q.setValueAtTime(0.75, start);
-
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(vol, start);
-    g.gain.setValueAtTime(vol, start + 0.04);
-    g.gain.linearRampToValueAtTime(0.0001, start + 0.085);
-
-    src.connect(filter);
-    filter.connect(g);
-    g.connect(destination);
-    src.start(start);
-    src.stop(start + 0.10);
-  }
-
-  function playHat(when, vol = 0.05, destination = audioBus.bgm) {
-    if (!settings.audio) return;
-    const ctx = audioCtx;
-    const start = Math.max(when, ctx.currentTime + 0.002);
-    const src = ctx.createBufferSource();
-    src.buffer = noiseBuffer;
-    src.loop = true;
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = "highpass";
-    filter.frequency.setValueAtTime(7600, start);
-    filter.Q.setValueAtTime(0.9, start);
-
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(vol, start);
-    g.gain.linearRampToValueAtTime(0.0001, start + 0.028);
-
-    src.connect(filter);
-    filter.connect(g);
-    g.connect(destination);
-    src.start(start);
-    src.stop(start + 0.035);
-  }
-
   function midiToFreq(midi) {
     return 440 * 2 ** ((midi - 69) / 12);
   }
 
-  // --- Sound Effects (Mouse-Squad gold standard volume & punch) ---
+  // --- Sound Effects (Calibrated to Mouse-Squad arcade standard, zero ducking) ---
   function playSfx(name) {
     if (!settings.audio) return;
     ensureAudioReady();
@@ -183,61 +131,61 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     switch (name) {
       case "ui":
       case "select":
-        tone(t, 0.05, 880, 0.09, "w25");
+        tone(t, 0.05, 880, 0.08, "w25");
         break;
       case "confirm":
-        tone(t, 0.06, 660, 0.11, "w25");
-        tone(t + 0.06, 0.10, 990, 0.11, "w25");
+        tone(t, 0.06, 660, 0.09, "w25");
+        tone(t + 0.06, 0.10, 990, 0.09, "w25");
         break;
       case "jump":
-        tone(t, 0.12, 330, 0.13, "w25", 660);
+        tone(t, 0.12, 330, 0.10, "w25", 660);
         break;
       case "jump2":
-        tone(t, 0.12, 500, 0.13, "w25", 1000);
+        tone(t, 0.12, 500, 0.10, "w25", 1000);
         break;
       case "coin":
-        tone(t, 0.06, 1319, 0.12, "w25");
-        tone(t + 0.06, 0.10, 1760, 0.12, "w25");
+        tone(t, 0.06, 1319, 0.09, "w25");
+        tone(t + 0.06, 0.10, 1760, 0.09, "w25");
         break;
       case "stomp":
-        tone(t, 0.12, 500, 0.16, "w50", 140);
+        tone(t, 0.12, 500, 0.12, "w50", 140);
         break;
       case "bump":
-        tone(t, 0.09, 220, 0.14, "w50", 160);
+        tone(t, 0.09, 220, 0.11, "w50", 160);
         break;
       case "hurt":
-        tone(t, 0.32, 560, 0.16, "w125", 90);
+        tone(t, 0.32, 560, 0.12, "w125", 90);
         break;
       case "power":
-        [392, 523, 784].forEach((f, k) => tone(t + k * 0.08, 0.10, f, 0.13, "w25"));
+        [392, 523, 784].forEach((f, k) => tone(t + k * 0.08, 0.10, f, 0.10, "w25"));
         break;
       case "forge":
-        [330, 494, 659, 988].forEach((f, k) => tone(t + k * 0.07, 0.11, f, 0.13, "w25"));
-        tone(t + 0.14, 0.12, 1420, 0.10, "w125", 920);
+        [330, 494, 659, 988].forEach((f, k) => tone(t + k * 0.07, 0.11, f, 0.10, "w25"));
+        tone(t + 0.14, 0.12, 1420, 0.08, "w125", 920);
         break;
       case "forge-expire":
-        [554, 440, 330].forEach((f, k) => tone(t + k * 0.08, 0.10, f, 0.12, "w25"));
-        tone(t + 0.18, 0.12, 300, 0.12, "triangle", 160);
+        [554, 440, 330].forEach((f, k) => tone(t + k * 0.08, 0.10, f, 0.09, "w25"));
+        tone(t + 0.18, 0.12, 300, 0.09, "triangle", 160);
         break;
       case "sandstorm":
-        [294, 392, 523, 659].forEach((f, k) => tone(t + k * 0.07, 0.10, f, 0.13, "w25"));
-        tone(t + 0.16, 0.20, 190, 0.12, "w50", 520);
+        [294, 392, 523, 659].forEach((f, k) => tone(t + k * 0.07, 0.10, f, 0.10, "w25"));
+        tone(t + 0.16, 0.20, 190, 0.10, "w50", 520);
         break;
       case "sandstorm-expire":
-        [523, 440, 330].forEach((f, k) => tone(t + k * 0.07, 0.09, f, 0.11, "w25"));
-        tone(t + 0.16, 0.12, 360, 0.12, "triangle", 180);
+        [523, 440, 330].forEach((f, k) => tone(t + k * 0.07, 0.09, f, 0.09, "w25"));
+        tone(t + 0.16, 0.12, 360, 0.09, "triangle", 180);
         break;
       case "powerdown":
-        [784, 523, 392].forEach((f, k) => tone(t + k * 0.08, 0.10, f, 0.12, "triangle"));
+        [784, 523, 392].forEach((f, k) => tone(t + k * 0.08, 0.10, f, 0.10, "triangle"));
         break;
       case "1up":
-        [523, 659, 784, 1046].forEach((f, k) => tone(t + k * 0.07, 0.12, f, 0.14, "w25"));
+        [523, 659, 784, 1046].forEach((f, k) => tone(t + k * 0.07, 0.10, f, 0.11, "w25"));
         break;
       case "clear":
-        [523, 659, 784, 988, 1046].forEach((f, k) => tone(t + k * 0.09, 0.14, f, 0.15, "w25"));
+        [523, 659, 784, 988, 1046].forEach((f, k) => tone(t + k * 0.09, 0.11, f, 0.12, "w25"));
         break;
       case "spring":
-        tone(t, 0.22, 220, 0.18, "w25", 880);
+        tone(t, 0.22, 220, 0.14, "w25", 880);
         break;
       default:
         break;
@@ -370,9 +318,8 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
   function toCloudBass(midi, stepIndex) {
     if (midi == null) return N;
     const beatStep = stepIndex % 8;
-    const note = toCloudColor(midi, stepIndex);
-    if (beatStep === 0) return note + 12;
-    if (beatStep === 4) return note + 7;
+    // Low, stable root bass matching other motifs without octave jumps into harmony
+    if (beatStep === 0 || beatStep === 4) return toCloudColor(midi);
     return N;
   }
 
@@ -463,10 +410,10 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       harmony: BGM_TRACKS.overworld.harmony.map((m) => (m == null ? N : toMinorColor(m) - 12)),
       bass: BGM_TRACKS.overworld.bass.map((m) => (m == null ? N : toMinorColor(m) - 2)),
       arp: BGM_TRACKS.overworld.arp.map((m, i) => (m == null || i % 2 === 1 ? N : toMinorColor(m) - 12)),
-      groove: "castle",
       melodyWave: "w25",
       harmonyWave: "w50",
       bassWave: "triangle",
+      bassVolume: 0.16,
     }),
     "overworld-cloud": Object.freeze({
       bpm: 166,
@@ -475,10 +422,10 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       harmony: BGM_TRACKS.overworld.harmony.map((m, i) => toCloudHarmony(m, i)),
       bass: BGM_TRACKS.overworld.bass.map((m, i) => toCloudBass(m, i)),
       arp: BGM_TRACKS.overworld.arp.map((m, i) => toCloudArp(m, i)),
-      groove: "cloud",
       melodyWave: "w25",
       harmonyWave: "w125",
       bassWave: "triangle",
+      bassVolume: 0.10, // Soft, gentle floating bass (not jarring or overpowering)
     }),
     "overworld-desert": Object.freeze({
       bpm: 160,
@@ -487,10 +434,10 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       harmony: BGM_TRACKS.overworld.harmony.map((m, i) => toDesertHarmony(m, i)),
       bass: BGM_TRACKS.overworld.bass.map((m, i) => toDesertBass(m, i)),
       arp: BGM_TRACKS.overworld.arp.map((m, i) => toDesertArp(m, i)),
-      groove: "desert",
       melodyWave: "w25",
       harmonyWave: "w50",
       bassWave: "triangle",
+      bassVolume: 0.16,
     }),
     "overworld-space": Object.freeze({
       bpm: 154,
@@ -499,10 +446,10 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       harmony: BGM_TRACKS.overworld.harmony.map((m, i) => toSpaceHarmony(m, i)),
       bass: BGM_TRACKS.overworld.bass.map((m, i) => toSpaceBass(m, i)),
       arp: BGM_TRACKS.overworld.arp.map((m, i) => toSpaceArp(m, i)),
-      groove: "space",
       melodyWave: "w25",
       harmonyWave: "w125",
       bassWave: "triangle",
+      bassVolume: 0.14,
     }),
   });
 
@@ -531,6 +478,8 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     function scheduleNotes() {
       if (!settings.audio || !track || !desiredTrack) return;
       const ctx = audioCtx;
+      if (ctx.state === "suspended") return;
+
       const stepDur = stepDuration();
       const totalSteps = track.melody.length;
       const safetyTime = ctx.currentTime + 0.012;
@@ -544,7 +493,6 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
         const i = step % totalSteps;
         const t = nextStepTime;
         const dur = stepDur * 0.90;
-        const beatStep = i % 8;
 
         const melNote = track.melody[i];
         const hrmNote = track.harmony[i];
@@ -555,46 +503,22 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
         const hrmWave = track.harmonyWave ?? "w50";
         const basWave = track.bassWave ?? "triangle";
 
-        // Volumes calibrated to Mouse-Squad standard
+        const melVol = track.melodyVolume ?? 0.14;
+        const hrmVol = track.harmonyVolume ?? 0.07;
+        const basVol = track.bassVolume ?? 0.16;
+        const arpVol = track.arpVolume ?? 0.04;
+
         if (melNote != null) {
-          tone(t, dur, midiToFreq(melNote), 0.14, melWave, null, audioBus.bgm);
+          tone(t, dur, midiToFreq(melNote), melVol, melWave, null, audioBus.bgm);
         }
         if (hrmNote != null) {
-          tone(t, dur * 0.92, midiToFreq(hrmNote), 0.07, hrmWave, null, audioBus.bgm);
+          tone(t, dur * 0.92, midiToFreq(hrmNote), hrmVol, hrmWave, null, audioBus.bgm);
         }
         if (basNote != null) {
-          tone(t, dur * 0.95, midiToFreq(basNote), 0.22, basWave, null, audioBus.bgm);
+          tone(t, dur * 0.95, midiToFreq(basNote), basVol, basWave, null, audioBus.bgm);
         }
         if (arpNote != null) {
-          tone(t, stepDur * 0.5, midiToFreq(arpNote), 0.045, "w125", null, audioBus.bgm);
-        }
-
-        // Percussion grooves
-        const groove = track.groove ?? "platformer";
-        if (groove === "platformer") {
-          if (beatStep === 0 || beatStep === 4) playKick(t, 0.20, audioBus.bgm);
-          if (beatStep === 2 || beatStep === 6) playSnare(t, 0.12, audioBus.bgm);
-          playHat(t, beatStep % 2 === 1 ? 0.05 : 0.035, audioBus.bgm);
-        } else if (groove === "desert") {
-          // Maqsum rhythm
-          if (beatStep === 0 || beatStep === 4) playKick(t, 0.22, audioBus.bgm);
-          if (beatStep === 2 || beatStep === 6) playSnare(t, 0.13, audioBus.bgm);
-          if (beatStep === 1 || beatStep === 3 || beatStep === 5 || beatStep === 7) playHat(t, 0.05, audioBus.bgm);
-        } else if (groove === "castle") {
-          // Driving suspense
-          if (beatStep === 0 || beatStep === 5) playKick(t, 0.22, audioBus.bgm);
-          if (beatStep === 4) playSnare(t, 0.13, audioBus.bgm);
-          playHat(t, 0.045, audioBus.bgm);
-        } else if (groove === "cloud") {
-          // Light bounce
-          if (beatStep === 0) playKick(t, 0.14, audioBus.bgm);
-          if (beatStep === 4) playSnare(t, 0.09, audioBus.bgm);
-          if (beatStep % 2 === 1) playHat(t, 0.04, audioBus.bgm);
-        } else if (groove === "space") {
-          // Ambient pulse
-          if (beatStep === 0) playKick(t, 0.16, audioBus.bgm);
-          if (beatStep === 4) playSnare(t, 0.09, audioBus.bgm);
-          if (beatStep === 2 || beatStep === 6) playHat(t, 0.035, audioBus.bgm);
+          tone(t, stepDur * 0.5, midiToFreq(arpNote), arpVol, "w125", null, audioBus.bgm);
         }
 
         step++;
@@ -602,13 +526,15 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       }
     }
 
-    function start(name) {
+    function start(name, force = false) {
       if (!settings.audio) return;
       ensureAudioReady();
       const newTrack = getTrack(name);
       if (!newTrack) return;
 
-      if (currentTrackName === name && intervalId) return;
+      if (!force && currentTrackName === name && intervalId && audioCtx.state === "running") {
+        return;
+      }
 
       if (intervalId) {
         clearInterval(intervalId);
@@ -620,11 +546,10 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
       step = 0;
       nextStepTime = audioCtx.currentTime + 0.04;
 
-      // Unmute and ramp BGM bus to full volume
+      // Directly restore BGM bus gain without relying on broken scheduled ramps
       const now = audioCtx.currentTime;
       audioBus.bgm.gain.cancelScheduledValues(now);
-      audioBus.bgm.gain.setValueAtTime(audioBus.bgm.gain.value, now);
-      audioBus.bgm.gain.linearRampToValueAtTime(BGM_BUS_GAIN, now + 0.05);
+      audioBus.bgm.gain.setValueAtTime(BGM_BUS_GAIN, now);
 
       intervalId = setInterval(scheduleNotes, lookaheadMs);
       scheduleNotes();
@@ -650,23 +575,34 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
 
     function requestTrack(trackName) {
       desiredTrack = trackName;
-      refresh();
+      refresh(false);
     }
 
-    function refresh() {
+    function refresh(force = false) {
       if (!settings.audio || !desiredTrack) {
         stop(0.12);
         return;
       }
-      if (currentTrackName !== desiredTrack) {
-        start(desiredTrack);
+      if (force || currentTrackName !== desiredTrack || !intervalId || audioCtx.state === "suspended") {
+        start(desiredTrack, force);
       }
+    }
+
+    function tick() {
+      if (!settings.audio || !track || !desiredTrack) return;
+      if (audioCtx.state === "suspended") {
+        ensureAudioReady();
+        return;
+      }
+      scheduleNotes();
     }
 
     return {
       requestTrack,
       stop,
       refresh,
+      tick,
+      start,
       get desiredTrack() {
         return desiredTrack;
       },
@@ -686,7 +622,7 @@ export function createAudioSystem({ audioCtx, settings, saveSettings, rand }) {
     audioBus.master.gain.setValueAtTime(audioBus.master.gain.value, now);
     audioBus.master.gain.linearRampToValueAtTime(settings.audio ? MASTER_ON_GAIN : 0.0, now + 0.04);
 
-    bgm.refresh();
+    bgm.refresh(true);
     playSfx("ui");
   }
 

@@ -226,15 +226,22 @@ export function createGameCore() {
     return anyGamepadPolledDown(binding);
   }
 
+  let ensureAudioReady = () => {};
+
   function onAnyInputPress(binding, fn) {
     const cancels = [];
     const stickDownState = [];
 
+    const wrappedFn = (arg) => {
+      ensureAudioReady();
+      fn(arg);
+    };
+
     for (const key of binding?.keys ?? []) {
-      cancels.push(onKeyPress(key, () => fn(key)));
+      cancels.push(onKeyPress(key, () => wrappedFn(key)));
     }
     for (const button of binding?.buttons ?? []) {
-      cancels.push(onGamepadButtonPress(button, () => fn(button)));
+      cancels.push(onGamepadButtonPress(button, () => wrappedFn(button)));
     }
     for (const stick of binding?.sticks ?? []) {
       stickDownState.push(false);
@@ -243,7 +250,7 @@ export function createGameCore() {
         onUpdate(() => {
           const down = stickBindingDown(stick);
           const wasDown = stickDownState[stickIndex];
-          if (down && !wasDown) fn(stick.stick ?? "left");
+          if (down && !wasDown) wrappedFn(stick.stick ?? "left");
           stickDownState[stickIndex] = down;
         }),
       );
@@ -359,11 +366,17 @@ export function createGameCore() {
     if (changed) saveBest();
   }
 
-  const { ensureAudioReady, playSfx, bgm, toggleAudio } = createAudioSystem({
+  const audioSystem = createAudioSystem({
     audioCtx,
     settings,
     saveSettings,
     rand,
+  });
+  ensureAudioReady = audioSystem.ensureAudioReady;
+  const { playSfx, bgm, toggleAudio } = audioSystem;
+
+  onUpdate(() => {
+    bgm.tick();
   });
 
   function registerCommonHotkeys({ characterId = "cal" } = {}) {
