@@ -895,6 +895,8 @@ export function registerGameScene(ctx) {
             topSprites: ["robot-red", "robot-pink"],
           }),
       },
+    });
+
     worldDeathY = level.levelHeight() + CONFIG.fallDeathPadding;
 
     const vineColumns = (() => {
