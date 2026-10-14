@@ -527,7 +527,7 @@ export function registerGameScene(ctx) {
         return [
           sprite(spriteName),
           enemyDamageArea(),
-          perfCull({ margin: tileSize * 10 }),
+          perfCull({ margin: tileSize * 4 }),
           "enemy",
           "danger",
           "flyingEnemy",
@@ -565,7 +565,7 @@ export function registerGameScene(ctx) {
         return [
           sprite(spriteName),
           enemyDamageArea(),
-          perfCull({ margin: tileSize * 10 }),
+          perfCull({ margin: tileSize * 4 }),
           "enemy",
           "danger",
           "floaterEnemy",
@@ -599,7 +599,7 @@ export function registerGameScene(ctx) {
         // Keep damage contact slightly inset from robot art to avoid "ghost" hits.
         enemyDamageArea(),
         body(),
-        perfCull({ margin: tileSize * 10 }),
+        perfCull({ margin: tileSize * 4 }),
         "enemy",
         "danger",
         ...astroTags,
@@ -621,7 +621,7 @@ export function registerGameScene(ctx) {
                 sprite(topSprite),
                 pos(this.pos.x, this.pos.y - i * tileSize),
                 enemyDamageArea(),
-                perfCull({ margin: tileSize * 10 }),
+                perfCull({ margin: tileSize * 4 }),
                 "enemyHitbox",
                 "danger",
                 z(5 + i),
@@ -879,15 +879,51 @@ export function registerGameScene(ctx) {
       drawPolygon({ pts: _tri1, color: col, opacity: alpha });
     }
 
+    // Pre-allocated backdrop colors for zero-GC 60 FPS rendering
+    const _cGrassSky = rgb(126, 207, 247);
+    const _cGrassSunHalo = rgb(255, 238, 140);
+    const _cGrassSun = rgb(255, 225, 90);
+    const _cGrassMtnL = rgb(82, 148, 168);
+    const _cGrassMtnR = rgb(68, 126, 144);
+    const _cGrassWhite = rgb(255, 255, 255);
+    const _cGrassHill1 = rgb(78, 166, 88);
+    const _cGrassHill2 = rgb(92, 184, 98);
+    const _cGrassBushDark = rgb(56, 142, 60);
+    const _cGrassBushLight = rgb(68, 160, 72);
+    const _cGrassBushFlower = rgb(255, 220, 100);
+
+    const _cDesertSky = rgb(levelTheme.skyBottom.r, levelTheme.skyBottom.g, levelTheme.skyBottom.b);
+    const _cDesertSun = rgb(levelTheme.sun.r, levelTheme.sun.g, levelTheme.sun.b);
+    const _cDesertPyr1L = rgb(210, 160, 88);
+    const _cDesertPyr1R = rgb(186, 136, 68);
+    const _cDesertPyr2L = rgb(218, 170, 98);
+    const _cDesertPyr2R = rgb(194, 144, 76);
+    const _cDesertPyrRidge = rgb(130, 92, 44);
+    const _cDesertDuneDark = rgb(levelTheme.duneDark.r, levelTheme.duneDark.g, levelTheme.duneDark.b);
+    const _cDesertDuneLight = rgb(levelTheme.duneLight.r, levelTheme.duneLight.g, levelTheme.duneLight.b);
+
+    const _cCloudSky = rgb(levelTheme.skyTop.r, levelTheme.skyTop.g, levelTheme.skyTop.b);
+    const _cCloudHaze = rgb(255, 222, 185);
+    const _cCloudSun = rgb(255, 238, 180);
+    const _cCloudWhite = rgb(255, 255, 255);
+    const _cCloudShadow = rgb(215, 228, 245);
+    const _cCloudRim = rgb(246, 238, 244);
+    const _cCloudIsland = rgb(155, 142, 178);
+    const _cCloudGrass = rgb(118, 190, 132);
+
+    const _cSpaceBg = rgb(2, 6, 20);
+    const _cSpaceWhiteStar = rgb(255, 255, 255);
+    const _cSpaceMoon = rgb(188, 202, 222);
+
     function drawGrassyBackdropDirect(camX, left, right, levelW) {
       // Sky base
-      dRect(left - 20, -10, width() + 40, height() + 20, rgb(126, 207, 247));
+      dRect(left - 20, -10, width() + 40, height() + 20, _cGrassSky);
 
       // Cheerful retro sun with atmospheric halo (p = 0.04 - stays high in sky with very slow drift)
       const sunScreenX = 220 + (camX / (levelW || 1)) * 40;
       const sunWorldX = left + sunScreenX;
-      dCircle(sunWorldX, 80, 64, rgb(255, 238, 140), 0.35);
-      dCircle(sunWorldX, 80, 42, rgb(255, 225, 90), 0.92);
+      dCircle(sunWorldX, 80, 64, _cGrassSunHalo, 0.35);
+      dCircle(sunWorldX, 80, 42, _cGrassSun, 0.92);
 
       // Distant rolling mountain ranges (p = 0.20)
       const pMtn = 0.20;
@@ -900,8 +936,8 @@ export function registerGameScene(ctx) {
         const worldX = camX + (lx - mtnCamX);
         const mH = 150 + (Math.abs(lx * 13) % 45);
         const mW = 280;
-        dTri(worldX, mBaseY, worldX + mW * 0.5, mBaseY - mH, worldX + mW, mBaseY, rgb(82, 148, 168), 0.55);
-        dTri(worldX + mW * 0.5, mBaseY - mH, worldX + mW * 0.5, mBaseY, worldX + mW, mBaseY, rgb(68, 126, 144), 0.55);
+        dTri(worldX, mBaseY, worldX + mW * 0.5, mBaseY - mH, worldX + mW, mBaseY, _cGrassMtnL, 0.55);
+        dTri(worldX + mW * 0.5, mBaseY - mH, worldX + mW * 0.5, mBaseY, worldX + mW, mBaseY, _cGrassMtnR, 0.55);
       }
 
       // Clouds (p = 0.32 + gentle breeze drift)
@@ -910,15 +946,14 @@ export function registerGameScene(ctx) {
       const cloudStep = 260;
       const cStart = Math.floor((cloudCamX - halfW - 200) / cloudStep) * cloudStep;
       const cEnd = cloudCamX + halfW + 200;
-      const white = rgb(255, 255, 255);
       for (let lx = cStart; lx <= cEnd; lx += cloudStep) {
         const worldX = camX + (lx - cloudCamX);
         const cloudY = 45 + (Math.abs(lx * 11) % 75);
         const cw = 70 + (Math.abs(lx * 5) % 40);
-        dRect(worldX, cloudY + 12, cw * 1.4, 22, white, 0.82, 10);
-        dCircle(worldX + 22, cloudY + 12, 20, white, 0.88);
-        dCircle(worldX + 48, cloudY + 6, 28, white, 0.92);
-        dCircle(worldX + 78, cloudY + 14, 18, white, 0.85);
+        dRect(worldX, cloudY + 12, cw * 1.4, 22, _cGrassWhite, 0.82, 10);
+        dCircle(worldX + 22, cloudY + 12, 20, _cGrassWhite, 0.88);
+        dCircle(worldX + 48, cloudY + 6, 28, _cGrassWhite, 0.92);
+        dCircle(worldX + 78, cloudY + 14, 18, _cGrassWhite, 0.85);
       }
 
       // Midground rolling green hills (p = 0.45)
@@ -931,8 +966,8 @@ export function registerGameScene(ctx) {
       for (let lx = hStart; lx <= hEnd; lx += hillStep) {
         const worldX = camX + (lx - hillCamX);
         const hillRadius = 140 + (Math.abs(lx * 7) % 50);
-        dCircle(worldX + hillRadius * 0.8, hillY + hillRadius * 0.45, hillRadius, rgb(78, 166, 88), 0.85);
-        dCircle(worldX + hillRadius * 1.3, hillY + hillRadius * 0.5, hillRadius * 0.75, rgb(92, 184, 98), 0.80);
+        dCircle(worldX + hillRadius * 0.8, hillY + hillRadius * 0.45, hillRadius, _cGrassHill1, 0.85);
+        dCircle(worldX + hillRadius * 1.3, hillY + hillRadius * 0.5, hillRadius * 0.75, _cGrassHill2, 0.80);
       }
 
       // Foreground bush clusters along ground level (p = 0.85)
@@ -942,16 +977,13 @@ export function registerGameScene(ctx) {
       const bStart = Math.floor((bushCamX - halfW - 100) / bushStep) * bushStep;
       const bEnd = bushCamX + halfW + 100;
       const groundFloorY = height() - 32;
-      const bDark = rgb(56, 142, 60);
-      const bLight = rgb(68, 160, 72);
-      const bFlower = rgb(255, 220, 100);
       for (let lx = bStart; lx <= bEnd; lx += bushStep) {
         if ((Math.abs(lx) % 300) > 200) continue;
         const worldX = camX + (lx - bushCamX);
-        dCircle(worldX + 10, groundFloorY, 14, bDark, 0.9);
-        dCircle(worldX + 24, groundFloorY - 4, 18, bLight, 0.92);
-        dCircle(worldX + 40, groundFloorY + 1, 13, bDark, 0.9);
-        dCircle(worldX + 23, groundFloorY - 8, 2.5, bFlower, 0.95);
+        dCircle(worldX + 10, groundFloorY, 14, _cGrassBushDark, 0.9);
+        dCircle(worldX + 24, groundFloorY - 4, 18, _cGrassBushLight, 0.92);
+        dCircle(worldX + 40, groundFloorY + 1, 13, _cGrassBushDark, 0.9);
+        dCircle(worldX + 23, groundFloorY - 8, 2.5, _cGrassBushFlower, 0.95);
       }
     }
 
@@ -962,13 +994,13 @@ export function registerGameScene(ctx) {
         -10,
         width() + 40,
         height() + 20,
-        rgb(levelTheme.skyBottom.r, levelTheme.skyBottom.g, levelTheme.skyBottom.b),
+        _cDesertSky,
       );
 
       // Desert sun with heat haze (p = 0.04)
       const sunScreenX = 220 + Math.sin(time() * 1.5) * 3;
       const sunWorldX = left + sunScreenX;
-      dCircle(sunWorldX, 92, 56, rgb(levelTheme.sun.r, levelTheme.sun.g, levelTheme.sun.b), 0.94);
+      dCircle(sunWorldX, 92, 56, _cDesertSun, 0.94);
 
       // Distant Pyramids (p = 0.18)
       const pPyr = 0.18;
@@ -977,30 +1009,23 @@ export function registerGameScene(ctx) {
       const pyramidStep = 480;
       const pStart = Math.floor((pyrCamX - halfW - 400) / pyramidStep) * pyramidStep;
       const pEnd = pyrCamX + halfW + 400;
-      const pyrCol1L = rgb(210, 160, 88);
-      const pyrCol1R = rgb(186, 136, 68);
-      const pyrCol2L = rgb(218, 170, 98);
-      const pyrCol2R = rgb(194, 144, 76);
-      const pyrRidge = rgb(130, 92, 44);
 
       function drawDirectPyramid(px, py, pw, ph, cL, cR, alpha) {
         const half = pw / 2;
         const x0 = px - half;
         dTri(x0, py, x0 + half, py - ph, x0 + half, py, cL, alpha);
         dTri(x0, py, x0 + half, py - ph, x0 + pw, py, cR, alpha);
-        dRect(px - 1, py - ph, 2, ph, pyrRidge, alpha * 0.6);
+        dRect(px - 1, py - ph, 2, ph, _cDesertPyrRidge, alpha * 0.6);
       }
 
       for (let lx = pStart; lx <= pEnd; lx += pyramidStep) {
         const worldX = camX + (lx - pyrCamX);
-        drawDirectPyramid(worldX + 86, pyramidBaseY + 150, 172, 150, pyrCol1L, pyrCol1R, 0.54);
-        drawDirectPyramid(worldX + 292, pyramidBaseY + 154, 144, 130, pyrCol2L, pyrCol2R, 0.5);
+        drawDirectPyramid(worldX + 86, pyramidBaseY + 150, 172, 150, _cDesertPyr1L, _cDesertPyr1R, 0.54);
+        drawDirectPyramid(worldX + 292, pyramidBaseY + 154, 144, 130, _cDesertPyr2L, _cDesertPyr2R, 0.5);
       }
 
       // Distant Dunes (p = 0.32)
       const duneY = 420 + sceneryDrop;
-      const dDark = rgb(levelTheme.duneDark.r, levelTheme.duneDark.g, levelTheme.duneDark.b);
-      const dLight = rgb(levelTheme.duneLight.r, levelTheme.duneLight.g, levelTheme.duneLight.b);
       const pDuneDist = 0.32;
       const duneCamX1 = camX * pDuneDist;
       const dStep1 = 360;
@@ -1008,7 +1033,7 @@ export function registerGameScene(ctx) {
       const dEnd1 = duneCamX1 + halfW + 220;
       for (let lx = dStart1; lx <= dEnd1; lx += dStep1) {
         const worldX = camX + (lx - duneCamX1);
-        dCircle(worldX, duneY, 185, dDark, 0.92);
+        dCircle(worldX, duneY, 185, _cDesertDuneDark, 0.92);
       }
 
       // Near Dunes (p = 0.55)
@@ -1019,28 +1044,20 @@ export function registerGameScene(ctx) {
       const dEnd2 = duneCamX2 + halfW + 250;
       for (let lx = dStart2; lx <= dEnd2; lx += dStep2) {
         const worldX = camX + (lx - duneCamX2);
-        dCircle(worldX + 160, duneY + 14, 215, dLight, 0.90);
+        dCircle(worldX + 160, duneY + 14, 215, _cDesertDuneLight, 0.90);
       }
     }
 
     function drawCloudBackdropDirect(camX, left, right, levelW) {
-      const topCol = rgb(levelTheme.skyTop.r, levelTheme.skyTop.g, levelTheme.skyTop.b);
-      const hazeCol = rgb(255, 222, 185);
-      const cloudWhite = rgb(255, 255, 255);
-      const cloudShadow = rgb(215, 228, 245);
-      const cloudRim = rgb(246, 238, 244);
-      const islandCol = rgb(155, 142, 178);
-      const grassCol = rgb(118, 190, 132);
-
       // Sky base
-      dRect(left - 20, -10, width() + 40, height() + 20, topCol);
+      dRect(left - 20, -10, width() + 40, height() + 20, _cCloudSky);
       // Soft warm atmospheric horizon band
-      dRect(left - 20, height() - 150, width() + 40, 90, hazeCol, 0.40);
+      dRect(left - 20, height() - 150, width() + 40, 90, _cCloudHaze, 0.40);
 
       // Cloud horizon golden sun (p = 0.04)
       const sunScreenX = 320 + (camX / (levelW || 1)) * 30;
       const sunWorldX = left + sunScreenX;
-      dCircle(sunWorldX, height() - 130, 52, rgb(255, 238, 180), 0.65);
+      dCircle(sunWorldX, height() - 130, 52, _cCloudSun, 0.65);
 
       // Distant floating island silhouettes (p = 0.20)
       const pIsland = 0.20;
@@ -1051,8 +1068,8 @@ export function registerGameScene(ctx) {
       for (let lx = iStart; lx <= iEnd; lx += islandStep) {
         const worldX = camX + (lx - islandCamX);
         const iy = 150 + (Math.abs(lx * 7) % 85);
-        dTri(worldX, iy, worldX + 42, iy + 34, worldX + 84, iy, islandCol, 0.70);
-        dRect(worldX - 2, iy - 6, 88, 8, grassCol, 0.85);
+        dTri(worldX, iy, worldX + 42, iy + 34, worldX + 84, iy, _cCloudIsland, 0.70);
+        dRect(worldX - 2, iy - 6, 88, 8, _cCloudGrass, 0.85);
       }
 
       // Upper floating retro clouds (p = 0.42 + drift)
@@ -1067,10 +1084,10 @@ export function registerGameScene(ctx) {
         const cw = 70 + (Math.abs(lx * 5) % 36);
 
         // Stylized retro cloud composed of crisp solid rects (single batched draw call, 0 overdraw)
-        dRect(worldX, cy + 8, cw, 18, cloudWhite);
-        dRect(worldX + 12, cy, cw - 24, 10, cloudWhite);
-        dRect(worldX + 22, cy - 6, cw - 44, 8, cloudWhite);
-        dRect(worldX + 4, cy + 22, cw - 8, 4, cloudShadow, 0.45);
+        dRect(worldX, cy + 8, cw, 18, _cCloudWhite);
+        dRect(worldX + 12, cy, cw - 24, 10, _cCloudWhite);
+        dRect(worldX + 22, cy - 6, cw - 44, 8, _cCloudWhite);
+        dRect(worldX + 4, cy + 22, cw - 8, 4, _cCloudShadow, 0.45);
       }
 
       // Lower cloud deck bank at horizon (p = 0.60)
@@ -1082,16 +1099,16 @@ export function registerGameScene(ctx) {
       const deckY = height() - 56;
 
       // Solid base cloud floor
-      dRect(left - 20, deckY, width() + 40, 76, cloudWhite);
-      dRect(left - 20, deckY - 4, width() + 40, 6, cloudRim, 0.75);
+      dRect(left - 20, deckY, width() + 40, 76, _cCloudWhite);
+      dRect(left - 20, deckY - 4, width() + 40, 6, _cCloudRim, 0.75);
 
       // Stepped fluffy crests along the top rim
       for (let lx = dStart; lx <= dEnd; lx += deckStep) {
         const worldX = camX + (lx - deckCamX);
         const crestH = 16 + (Math.abs(lx * 7) % 18);
-        dRect(worldX, deckY - crestH, 72, crestH + 4, cloudWhite);
-        dRect(worldX + 14, deckY - crestH - 10, 44, 12, cloudWhite);
-        dRect(worldX + 24, deckY - crestH - 16, 24, 8, cloudWhite);
+        dRect(worldX, deckY - crestH, 72, crestH + 4, _cCloudWhite);
+        dRect(worldX + 14, deckY - crestH - 10, 44, 12, _cCloudWhite);
+        dRect(worldX + 24, deckY - crestH - 16, 24, 8, _cCloudWhite);
       }
     }
 
@@ -1140,17 +1157,16 @@ export function registerGameScene(ctx) {
     }
 
     function drawSpaceBackdropDirect(camX, left, right) {
-      dRect(left - 20, -10, width() + 40, height() + 20, rgb(2, 6, 20));
+      dRect(left - 20, -10, width() + 40, height() + 20, _cSpaceBg);
 
       const curTime = time();
-      const whiteStar = rgb(255, 255, 255);
       for (let i = 0; i < spaceStars.length; i++) {
         const s = spaceStars[i];
         const worldX = camX + (s.baseX - camX * s.parallax);
         if (worldX < left - 10 || worldX > right + 10) continue;
         const alpha = s.alpha * (0.58 + Math.sin(curTime * s.speed + s.phase) * 0.42);
         const starSize = Math.max(1, Math.round(s.r * 1.2));
-        dRect(worldX, s.y, starSize, starSize, whiteStar, alpha);
+        dRect(worldX, s.y, starSize, starSize, _cSpaceWhiteStar, alpha);
       }
 
       const pBody = 0.16;
@@ -1161,59 +1177,162 @@ export function registerGameScene(ctx) {
         dCircle(worldX, b.y, b.r + b.glowPad, b.glowCol, b.alpha * 0.32);
         dCircle(worldX, b.y, b.r, b.bodyCol, b.alpha);
         if (b.hasMoon) {
-          dCircle(worldX + b.mx, b.y + b.my, b.mr, rgb(188, 202, 222), b.alpha * 0.74);
+          dCircle(worldX + b.mx, b.y + b.my, b.mr, _cSpaceMoon, b.alpha * 0.74);
         }
       }
     }
 
-    const castleEmbers = [];
-    if (isCastleLevel && !isBossLevel) {
-      for (let i = 0; i < 26; i++) {
-        castleEmbers.push({
-          baseX: rand(0, level.levelWidth() * 0.6 + width()),
-          y: height() - rand(20, 58),
-          r: rand(14, 34),
-          alpha: rand(0.1, 0.22),
-        });
+    // Castle interior dungeon colors (pre-allocated singletons for zero-GC 60 FPS)
+    const _cWallBg = rgb(16, 17, 26);
+    const _cWallMortarH = rgb(24, 26, 38);
+    const _cWallMortarV = rgb(20, 22, 33);
+    const _cAlcoveBg = rgb(10, 11, 16);
+    const _cAlcoveGlow = rgb(65, 24, 18);
+    const _cAlcoveArch = rgb(34, 38, 52);
+    const _cIronBar = rgb(45, 49, 64);
+    const _cChainLink = rgb(42, 46, 60);
+    const _cPillarCapital = rgb(54, 60, 78);
+    const _cPillarShaft = rgb(38, 43, 56);
+    const _cPillarHighlight = rgb(58, 65, 84);
+    const _cPillarShadow = rgb(22, 25, 34);
+    const _cPillarBase = rgb(46, 52, 68);
+    const _cTorchBracket = rgb(18, 20, 26);
+    const _cTorchBowl = rgb(135, 92, 36);
+    const _cTorchOuter = rgb(242, 92, 24);
+    const _cTorchInner = rgb(255, 196, 46);
+    const _cTorchCore = rgb(255, 255, 230);
+    const _cTorchGlow = rgb(255, 120, 30);
+    const _cLavaGlowBase = rgb(135, 28, 14);
+    const _cLavaGlowRim = rgb(215, 68, 18);
+    const _cCeilingBeam = rgb(28, 31, 44);
+
+    function drawCastleBackdropDirect(camX, left, right, levelW) {
+      const curT = time();
+
+      // 1. Solid deep dungeon stone wall base
+      dRect(left - 20, -10, width() + 40, height() + 20, _cWallBg);
+
+      // 2. Brick masonry pattern across background wall (p = 0.12)
+      const pWall = 0.12;
+      const wallCamX = camX * pWall;
+      const bRowH = 26;
+      const bColW = 54;
+      const wStart = Math.floor((wallCamX - halfW - 60) / bColW) * bColW;
+      const wEnd = wallCamX + halfW + 60;
+
+      // Horizontal mortar lines
+      for (let y = 16; y < height() - 30; y += bRowH) {
+        dRect(left - 10, y, width() + 20, 2, _cWallMortarH, 0.7);
       }
-    }
-
-    function drawCastleBackdropDirect(camX, left, right, levelW, includeEmbers) {
-      dRect(left - 20, -10, width() + 40, height() + 20, rgb(22, 24, 34));
-      dRect(left - 20, height() - 160, width() + 40, 160, rgb(68, 26, 20), 0.38);
-
-      // Blood moon (p = 0.04)
-      const moonScreenX = 170 + (camX / (levelW || 1)) * 30;
-      const moonWorldX = left + moonScreenX;
-      dCircle(moonWorldX, 88, 44, rgb(255, 208, 150), 0.18);
-
-      // Castle towers (p = 0.24)
-      const pTower = 0.24;
-      const towerCamX = camX * pTower;
-      const towerStep = 186;
-      const tStart = Math.floor((towerCamX - halfW - 150) / towerStep) * towerStep;
-      const tEnd = towerCamX + halfW + 150;
-      const wallCol = rgb(54, 59, 72);
-      const roofCol = rgb(46, 50, 62);
-      for (let lx = tStart; lx <= tEnd; lx += towerStep) {
-        const worldX = camX + (lx - towerCamX);
-        const towerH = 120 + (Math.abs(lx * 19) % 80);
-        dRect(worldX, 378 - towerH, 68, towerH, wallCol, 0.72);
-        dTri(worldX, 378 - towerH, worldX + 34, 378 - towerH - 46, worldX + 68, 378 - towerH, roofCol, 0.72);
-      }
-
-      if (includeEmbers) {
-        const emberCol = rgb(170, 64, 36);
-        const curT = time();
-        const pEmber = 0.55;
-        for (let i = 0; i < castleEmbers.length; i++) {
-          const e = castleEmbers[i];
-          const worldX = camX + (e.baseX - camX * pEmber);
-          if (worldX < left - 40 || worldX > right + 40) continue;
-          const floatY = e.y - ((curT * 20 + i * 15) % 80);
-          dCircle(worldX, floatY, e.r, emberCol, e.alpha);
+      // Staggered vertical mortar joints
+      for (let lx = wStart; lx <= wEnd; lx += bColW) {
+        const wx = camX + (lx - wallCamX);
+        for (let rowIdx = 0, y = 16; y < height() - 40; y += bRowH, rowIdx++) {
+          const shift = (rowIdx % 2) * (bColW * 0.5);
+          dRect(wx + shift, y, 2, bRowH, _cWallMortarV, 0.6);
         }
       }
+
+      // 3. Gothic Arched Niches & Windows (p = 0.22)
+      const pArch = 0.22;
+      const archCamX = camX * pArch;
+      const archStep = 210;
+      const aStart = Math.floor((archCamX - halfW - 160) / archStep) * archStep;
+      const aEnd = archCamX + halfW + 160;
+      for (let lx = aStart; lx <= aEnd; lx += archStep) {
+        const worldX = camX + (lx - archCamX);
+        const archW = 46;
+        const archH = 92;
+        const archY = 160;
+
+        // Recessed alcove shadow
+        dRect(worldX - archW * 0.5, archY, archW, archH, _cAlcoveBg, 0.95);
+        // Stone frame
+        dRect(worldX - archW * 0.5 - 3, archY - 8, archW + 6, 8, _cAlcoveArch);
+        dRect(worldX - archW * 0.5 - 3, archY, 4, archH, _cAlcoveArch);
+        dRect(worldX + archW * 0.5 - 1, archY, 4, archH, _cAlcoveArch);
+        dRect(worldX - archW * 0.5 - 5, archY + archH, archW + 10, 6, _cAlcoveArch);
+
+        // Alternate arches: dungeon barred window with ominous molten glow
+        const archIdx = Math.abs(Math.floor(lx / archStep));
+        if (archIdx % 2 === 1) {
+          dRect(worldX - archW * 0.5 + 4, archY + 4, archW - 8, archH - 8, _cAlcoveGlow, 0.45);
+          dRect(worldX - 11, archY + 4, 3, archH - 8, _cIronBar);
+          dRect(worldX, archY + 4, 3, archH - 8, _cIronBar);
+          dRect(worldX + 11, archY + 4, 3, archH - 8, _cIronBar);
+          dRect(worldX - archW * 0.5 + 4, archY + 44, archW - 8, 3, _cIronBar);
+        }
+      }
+
+      // 4. Heavy stone ceiling support beam running across top
+      dRect(left - 20, 0, width() + 40, 22, _cCeilingBeam);
+      dRect(left - 20, 22, width() + 40, 3, _cPillarShadow);
+
+      // 5. Grand Castle Support Pillars + Wall Torches (p = 0.38)
+      const pPillar = 0.38;
+      const pilCamX = camX * pPillar;
+      const pilStep = 210;
+      // Stagger pillars between the arches
+      const pilStart = Math.floor((pilCamX - halfW - 160) / pilStep) * pilStep + 105;
+      const pilEnd = pilCamX + halfW + 160;
+
+      for (let lx = pilStart; lx <= pilEnd; lx += pilStep) {
+        const px = camX + (lx - pilCamX);
+        const pilW = 34;
+        const pilLeft = px - pilW * 0.5;
+        const pilTop = 22;
+        const pilBot = height() - 14;
+
+        // Capital
+        dRect(pilLeft - 6, pilTop, pilW + 12, 12, _cPillarCapital);
+        dRect(pilLeft - 3, pilTop + 12, pilW + 6, 6, _cPillarCapital);
+
+        // Pillar shaft (with 3D highlight on left, shadow on right)
+        dRect(pilLeft, pilTop + 18, pilW, pilBot - (pilTop + 18), _cPillarShaft);
+        dRect(pilLeft, pilTop + 18, 6, pilBot - (pilTop + 18), _cPillarHighlight, 0.65);
+        dRect(pilLeft + pilW - 6, pilTop + 18, 6, pilBot - (pilTop + 18), _cPillarShadow, 0.7);
+
+        // Pillar base
+        dRect(pilLeft - 4, pilBot - 18, pilW + 8, 8, _cPillarBase);
+        dRect(pilLeft - 7, pilBot - 10, pilW + 14, 12, _cPillarBase);
+
+        // Hanging chains between pillars (from ceiling)
+        const chainX1 = px - 55;
+        const chainX2 = px + 55;
+        for (let cy = 25; cy < 75; cy += 8) {
+          dRect(chainX1, cy, 3, 5, _cChainLink);
+        }
+        for (let cy = 25; cy < 60; cy += 8) {
+          dRect(chainX2, cy, 3, 5, _cChainLink);
+        }
+
+        // Wall Sconce with Flickering Torch Flame
+        const torchY = 195;
+        // Subtle ambient light wash behind torch
+        dRect(pilLeft - 4, torchY - 24, pilW + 8, 48, _cTorchGlow, 0.12);
+
+        // Iron bracket
+        dRect(px - 3, torchY + 6, 6, 14, _cTorchBracket);
+        dRect(px - 7, torchY + 12, 14, 3, _cTorchBracket);
+        // Brass bowl
+        dRect(px - 6, torchY, 12, 6, _cTorchBowl);
+
+        // Flickering animated pixel flame
+        const flick = Math.sin(curT * 14 + lx * 0.25);
+        const flickH = flick * 2.2;
+        const flickX = Math.cos(curT * 16 + lx * 0.18) * 1.2;
+        // Outer flame
+        dRect(px - 4 + flickX, torchY - 11 - flickH, 8, 12 + flickH, _cTorchOuter);
+        // Inner bright flame
+        dRect(px - 2 + flickX * 0.6, torchY - 8 - flickH * 0.7, 4, 8 + flickH * 0.7, _cTorchInner);
+        // Hot core pixel
+        dRect(px - 1, torchY - 4, 2, 4, _cTorchCore);
+      }
+
+      // 6. Lava pit radiant floor glow along the bottom
+      const lavaFloorY = height() - 75;
+      dRect(left - 20, lavaFloorY + 22, width() + 40, 56, _cLavaGlowBase, 0.42);
+      dRect(left - 20, lavaFloorY, width() + 40, 24, _cLavaGlowRim, 0.22);
     }
 
     add([
@@ -1224,7 +1343,7 @@ export function registerGameScene(ctx) {
           const left = camX - halfW;
           const right = camX + halfW;
           const levelW = level.levelWidth();
-          if (isCastleLevel) drawCastleBackdropDirect(camX, left, right, levelW, !isBossLevel);
+          if (isCastleLevel) drawCastleBackdropDirect(camX, left, right, levelW);
           else if (isDesertLevel) drawDesertBackdropDirect(camX, left, right, levelW);
           else if (isCloudLevel) drawCloudBackdropDirect(camX, left, right, levelW);
           else if (isSpaceLevel) drawSpaceBackdropDirect(camX, left, right);
@@ -1762,12 +1881,11 @@ export function registerGameScene(ctx) {
 
     const _reusableSolidBox = { left: 0, top: 0, right: 0, bottom: 0 };
     function solidBounds(obj, tileX, tileY) {
-      if (obj && typeof obj.worldArea === "function") {
-        const box = obj.worldArea().bbox();
-        _reusableSolidBox.left = box.pos.x;
-        _reusableSolidBox.top = box.pos.y;
-        _reusableSolidBox.right = box.pos.x + box.width;
-        _reusableSolidBox.bottom = box.pos.y + box.height;
+      if (obj && obj.is("platform") && obj.pos) {
+        _reusableSolidBox.left = obj.pos.x;
+        _reusableSolidBox.top = obj.pos.y;
+        _reusableSolidBox.right = obj.pos.x + tileSize;
+        _reusableSolidBox.bottom = obj.pos.y + tileSize;
         return _reusableSolidBox;
       }
       const tx = tileX * tileSize;
@@ -3404,16 +3522,21 @@ export function registerGameScene(ctx) {
       if (tileX >= level.numColumns() || tileY >= level.numRows()) return false;
       solidQueryTile.x = tileX;
       solidQueryTile.y = tileY;
-      return level
-        .getAt(solidQueryTile)
-        .some(
-          (obj) =>
-            !!obj &&
-            (typeof obj.exists !== "function" || obj.exists()) &&
-            typeof obj.is === "function" &&
-            obj.is("solid") &&
-            obj.solidEnabled !== false,
-        );
+      const objs = level.getAt(solidQueryTile);
+      if (!objs || !objs.length) return false;
+      for (let i = 0; i < objs.length; i++) {
+        const obj = objs[i];
+        if (
+          obj &&
+          (typeof obj.exists !== "function" || obj.exists()) &&
+          typeof obj.is === "function" &&
+          obj.is("solid") &&
+          obj.solidEnabled !== false
+        ) {
+          return true;
+        }
+      }
+      return false;
     }
 
     // Enemy patrol + cliff-safe walking.
