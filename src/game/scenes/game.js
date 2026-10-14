@@ -604,9 +604,9 @@ export function registerGameScene(ctx) {
       };
     }
 
-    const ENEMY_STOMP_ZONE_OFFSET_Y = 8.3;
-    const ENEMY_STOMP_ZONE_HEIGHT = 5;
-    const ENEMY_STOMP_ZONE_GRACE = 5;
+    const ENEMY_STOMP_ZONE_OFFSET_Y = 2;
+    const ENEMY_STOMP_ZONE_HEIGHT = 16;
+    const ENEMY_STOMP_ZONE_GRACE = 12;
 
     function enemyDamageArea() {
       return area({
@@ -2409,12 +2409,37 @@ export function registerGameScene(ctx) {
 
     function isPlayerStompingEnemy(enemy, col = null) {
       if (!enemy || !enemy.exists()) return false;
-      if (!player.isFalling()) return false;
+      if (enemy.defeated) return false;
+
+      // Player must be moving downward or in a falling/descending state
+      const isDescending =
+        (typeof player.isFalling === "function" && player.isFalling()) ||
+        (player.vel && player.vel.y >= -20);
+      if (!isDescending) return false;
+
+      // If Kaboom collision normal indicates collision from bottom, it's definitely a stomp
       if (col && col.isBottom()) return true;
 
       const box = playerBoxAt();
+      const stackHeight = Math.max(1, Math.floor(enemy.stackHeight ?? 1));
+      const enemyTop = enemy.pos.y - (stackHeight - 1) * tileSize;
+      const enemyBottom = enemy.pos.y + tileSize;
+      const enemyMid = enemyTop + (enemyBottom - enemyTop) * 0.65;
+
+      // Horizontal overlap check with generous leeway
+      const hOverlap = box.right >= enemy.pos.x + 1 && box.left <= enemy.pos.x + tileSize - 1;
+      if (!hOverlap) return false;
+
+      // Any hit where the player's bottom is in the top 65% of the enemy counts as a stomp
+      if (box.bottom <= enemyMid + 8) return true;
+
+      // Also if player's vertical center is above the enemy's center
+      const playerCenterY = box.top + (box.bottom - box.top) * 0.5;
+      const enemyCenterY = enemyTop + (enemyBottom - enemyTop) * 0.5;
+      if (playerCenterY < enemyCenterY) return true;
+
+      // Also verify stomp bounds
       const stomp = enemyStompBounds(enemy);
-      if (box.right <= stomp.left || box.left >= stomp.right) return false;
       return (
         box.bottom >= stomp.top - ENEMY_STOMP_ZONE_GRACE &&
         box.bottom <= stomp.bottom + ENEMY_STOMP_ZONE_GRACE
@@ -2699,7 +2724,8 @@ export function registerGameScene(ctx) {
     });
 
     onUpdate(() => {
-      const frameDt = dt();
+      // Clamped delta-time prevents physics tunneling and lag spirals during frame drops
+      const frameDt = Math.min(Math.max(dt(), 0.001), 0.0334);
       const now = time();
 
       // HUD.
@@ -3008,14 +3034,16 @@ export function registerGameScene(ctx) {
       );
 
       // Manual stomp pass keeps full-width top hits reliable even when overlap events miss.
-      if (player.isFalling()) {
+      const isDescending =
+        (typeof player.isFalling === "function" && player.isFalling()) ||
+        (player.vel && player.vel.y >= -20);
+      if (isDescending) {
         for (const enemy of get("enemy")) {
           if (!enemy || !enemy.exists() || enemy.defeated) continue;
-          const zone = enemy.stompZone;
-          if (!zone || (typeof zone.exists === "function" && !zone.exists())) continue;
           if (!isPlayerStompingEnemy(enemy)) continue;
           squashEnemy(enemy);
           player.jump(CONFIG.bounceForce);
+          if (player.vel) player.vel.y = -CONFIG.bounceForce;
           break;
         }
       }
@@ -3190,10 +3218,9 @@ export function registerGameScene(ctx) {
       const enemy = zone?.owner;
       if (!enemy || !enemy.exists() || enemy.defeated) return;
 
-      if (isPlayerStompingEnemy(enemy, col)) {
-        squashEnemy(enemy);
-        player.jump(CONFIG.bounceForce);
-      }
+      squashEnemy(enemy);
+      player.jump(CONFIG.bounceForce);
+      if (player.vel) player.vel.y = -CONFIG.bounceForce;
     });
 
     function resolveEnemyOwner(obj) {
@@ -3218,6 +3245,7 @@ export function registerGameScene(ctx) {
       if (isPlayerStompingEnemy(enemy, col)) {
         squashEnemy(enemy);
         player.jump(CONFIG.bounceForce);
+        if (player.vel) player.vel.y = -CONFIG.bounceForce;
         return;
       }
 
