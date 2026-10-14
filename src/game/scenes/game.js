@@ -886,24 +886,130 @@ export function registerGameScene(ctx) {
     worldDeathY = level.levelHeight() + CONFIG.fallDeathPadding;
 
     function addGrassyLevelBackdrop() {
-      const cloudLayer = add([pos(0, 0), z(-200)]);
       const levelW = level.levelWidth();
-      cloudLayer.add([
+      const backdrop = add([pos(0, 0), z(-220)]);
+
+      // Sky base
+      backdrop.add([
         rect(levelW + 400, height() + 20),
         pos(-200, -10),
         color(126, 207, 247),
         opacity(1),
       ]);
-      for (let i = 0; i < 24; i++) {
-        const x = rand(0, levelW);
-        const y = rand(30, 190);
-        const w = rand(46, 110);
-        const h = rand(18, 40);
+
+      // Cheerful retro sun with soft atmospheric halo
+      backdrop.add([
+        circle(64),
+        pos(210, 80),
+        color(255, 238, 140),
+        opacity(0.35),
+      ]);
+      backdrop.add([
+        circle(42),
+        pos(210, 80),
+        color(255, 225, 90),
+        opacity(0.92),
+      ]);
+
+      // Distant rolling mountain ranges (layer z(-210))
+      const mountainLayer = add([pos(0, 0), z(-210)]);
+      const mountainStep = 240;
+      for (let x = -60; x < levelW + 300; x += mountainStep) {
+        const mH = 150 + ((x * 13) % 45);
+        const mW = 280;
+        mountainLayer.add([
+          polygon([vec2(0, 0), vec2(mW * 0.5, -mH), vec2(mW, 0)]),
+          pos(x, height() - 70),
+          color(82, 148, 168),
+          opacity(0.55),
+        ]);
+        mountainLayer.add([
+          polygon([vec2(mW * 0.5, -mH), vec2(mW * 0.5, 0), vec2(mW, 0)]),
+          pos(x, height() - 70),
+          color(68, 126, 144),
+          opacity(0.55),
+        ]);
+      }
+
+      // Midground rolling green hills (layer z(-205))
+      const hillLayer = add([pos(0, 0), z(-205)]);
+      const hillStep = 180;
+      for (let x = -80; x < levelW + 280; x += hillStep) {
+        const hillRadius = 140 + ((x * 7) % 50);
+        const hillY = height() - 25;
+        hillLayer.add([
+          circle(hillRadius),
+          pos(x + hillRadius * 0.8, hillY + hillRadius * 0.45),
+          color(78, 166, 88),
+          opacity(0.85),
+        ]);
+        hillLayer.add([
+          circle(hillRadius * 0.75),
+          pos(x + hillRadius * 1.3, hillY + hillRadius * 0.5),
+          color(92, 184, 98),
+          opacity(0.80),
+        ]);
+      }
+
+      // Structured fluffy cloud formations across the sky
+      const cloudLayer = add([pos(0, 0), z(-200)]);
+      for (let x = 60; x < levelW + 200; x += 260) {
+        const cloudY = 45 + ((x * 11) % 75);
+        const cw = 70 + ((x * 5) % 40);
         cloudLayer.add([
-          rect(w, h, { radius: 18 }),
-          pos(x, y),
+          rect(cw * 1.4, 22, { radius: 10 }),
+          pos(x, cloudY + 12),
           color(255, 255, 255),
-          opacity(0.24),
+          opacity(0.82),
+        ]);
+        cloudLayer.add([
+          circle(20),
+          pos(x + 22, cloudY + 12),
+          color(255, 255, 255),
+          opacity(0.88),
+        ]);
+        cloudLayer.add([
+          circle(28),
+          pos(x + 48, cloudY + 6),
+          color(255, 255, 255),
+          opacity(0.92),
+        ]);
+        cloudLayer.add([
+          circle(18),
+          pos(x + 78, cloudY + 14),
+          color(255, 255, 255),
+          opacity(0.85),
+        ]);
+      }
+
+      // Foreground bush clusters along the ground level (layer z(-190))
+      const bushLayer = add([pos(0, 0), z(-190)]);
+      const groundFloorY = height() - 32;
+      for (let x = 30; x < levelW; x += 150) {
+        if ((x % 300) > 200) continue;
+        bushLayer.add([
+          circle(14),
+          pos(x + 10, groundFloorY),
+          color(56, 142, 60),
+          opacity(0.9),
+        ]);
+        bushLayer.add([
+          circle(18),
+          pos(x + 24, groundFloorY - 4),
+          color(68, 160, 72),
+          opacity(0.92),
+        ]);
+        bushLayer.add([
+          circle(13),
+          pos(x + 40, groundFloorY + 1),
+          color(56, 142, 60),
+          opacity(0.9),
+        ]);
+        bushLayer.add([
+          circle(2.5),
+          pos(x + 23, groundFloorY - 8),
+          color(255, 220, 100),
+          opacity(0.95),
         ]);
       }
     }
@@ -1028,12 +1134,96 @@ export function registerGameScene(ctx) {
       const backdrop = add([pos(0, 0), z(-230)]);
       const levelW = level.levelWidth();
 
+      // Sky gradient base
       backdrop.add([
         rect(levelW + 400, height() + 20),
         pos(-200, -10),
         color(levelTheme.skyTop.r, levelTheme.skyTop.g, levelTheme.skyTop.b),
         opacity(1),
       ]);
+
+      // Sunset / golden horizon glow
+      backdrop.add([
+        rect(levelW + 400, 140),
+        pos(-200, height() - 140),
+        color(255, 218, 172),
+        opacity(0.42),
+      ]);
+
+      // Golden sun resting on the cloud horizon
+      backdrop.add([
+        circle(68),
+        pos(320, height() - 130),
+        color(255, 235, 175),
+        opacity(0.55),
+      ]);
+
+      // Distant floating island silhouettes (layer z(-225))
+      const islandLayer = add([pos(0, 0), z(-225)]);
+      for (let x = 120; x < levelW + 300; x += 380) {
+        const iy = 160 + ((x * 7) % 90);
+        islandLayer.add([
+          polygon([vec2(0, 0), vec2(45, 36), vec2(90, 0)]),
+          pos(x, iy),
+          color(164, 150, 186),
+          opacity(0.65),
+        ]);
+        islandLayer.add([
+          rect(96, 12, { radius: 6 }),
+          pos(x - 3, iy - 6),
+          color(128, 196, 140),
+          opacity(0.72),
+        ]);
+      }
+
+      // Massive fluffy cloud bank deck at bottom of screen (layer z(-220))
+      const cloudDeck = add([pos(0, 0), z(-220)]);
+      for (let x = -100; x < levelW + 300; x += 110) {
+        const r = 68 + ((x * 13) % 40);
+        cloudDeck.add([
+          circle(r),
+          pos(x + r * 0.8, height() - 20),
+          color(255, 255, 255),
+          opacity(0.88),
+        ]);
+        cloudDeck.add([
+          circle(r * 0.8),
+          pos(x + r * 1.2, height() - 5),
+          color(248, 238, 244),
+          opacity(0.92),
+        ]);
+      }
+
+      // Floating puffy cloud clusters across upper sky (layer z(-210))
+      const skyClouds = add([pos(0, 0), z(-210)]);
+      for (let x = 50; x < levelW + 200; x += 220) {
+        const cy = 40 + ((x * 17) % 80);
+        const cw = 75 + ((x * 3) % 35);
+        skyClouds.add([
+          rect(cw * 1.3, 20, { radius: 10 }),
+          pos(x, cy + 10),
+          color(255, 255, 255),
+          opacity(0.78),
+        ]);
+        skyClouds.add([
+          circle(22),
+          pos(x + 20, cy + 8),
+          color(255, 255, 255),
+          opacity(0.85),
+        ]);
+        skyClouds.add([
+          circle(30),
+          pos(x + 48, cy + 2),
+          color(255, 255, 255),
+          opacity(0.90),
+        ]);
+        skyClouds.add([
+          circle(18),
+          pos(x + 76, cy + 10),
+          color(255, 255, 255),
+          opacity(0.82),
+        ]);
+      }
     }
 
     function addSpaceLevelBackdrop() {
